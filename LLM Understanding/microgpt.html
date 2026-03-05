@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>microGPT 코드 분석 슬라이드</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+/* 1. THE SETUP */
+* { box-sizing: border-box; }
+p { margin: 0; margin-bottom: 15px; }
+
+body {
+  background-color: #0f172a; /* Slate 900 */
+  display: grid;
+  gap: 30px;
+  grid-template-columns: 1fr;
+  margin: 0;
+  min-height: 100vh;
+  padding: 30px 0;
+  place-items: center;
+}
+
+/* Base Slide Container */
+.slide-container {
+  align-items: center;
+  background-color: #1e293b; /* Slate 800 */
+  border-radius: 16px;
+  border: 1px solid #334155;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  font-family: 'Inter', sans-serif;
+  height: 720px;
+  justify-content: center;
+  overflow: hidden;
+  padding: 60px;
+  position: relative;
+  width: 1280px;
+}
+
+.slide-container::before {
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.08) 0%, transparent 60%);
+  border-radius: 50%;
+  content: '';
+  height: 600px;
+  left: -150px;
+  pointer-events: none;
+  position: absolute;
+  top: -150px;
+  width: 600px;
+  z-index: 0;
+}
+
+.slide-container::after {
+  background: radial-gradient(circle, rgba(192, 132, 252, 0.08) 0%, transparent 60%);
+  border-radius: 50%;
+  bottom: -200px;
+  content: '';
+  height: 700px;
+  pointer-events: none;
+  position: absolute;
+  right: -200px;
+  width: 700px;
+  z-index: 0;
+}
+
+.slide-container > * { position: relative; z-index: 1; }
+
+/* 2. CONSISTENT TYPOGRAPHY */
+.slide-container h1, .slide-container h2, .slide-container h3 {
+  color: #f8fafc; font-family: 'Outfit', sans-serif; font-weight: 700; margin: 0;
+}
+.slide-container p, .slide-container li {
+  color: #cbd5e1; font-family: 'Inter', sans-serif; font-size: 18px; line-height: 1.6;
+}
+
+.slide-container h1 { font-size: 60px; line-height: 1.2; margin-bottom: 20px; }
+.slide-container .slide-title { font-size: 40px; font-weight: 600; margin-bottom: 30px; text-align: left; width: 100%; border-bottom: 2px solid #334155; padding-bottom: 15px;}
+.slide-container h3 { font-size: 26px; font-weight: 600; margin-bottom: 15px; color: #38bdf8; }
+
+.slide-container .content-area {
+  align-items: flex-start; display: flex; flex-direction: column; flex-grow: 1; justify-content: center; width: 100%;
+}
+
+/* 3. LAYOUT DEFINITIONS */
+.two-column {
+  align-items: center; display: grid; gap: 40px; grid-template-columns: 1fr 1fr; width: 100%; height: 100%;
+}
+.two-column.code-heavy {
+  grid-template-columns: 1.2fr 0.8fr; /* Code gets more space */
+  align-items: start;
+}
+
+.explanation-box {
+  background-color: rgba(15, 23, 42, 0.6);
+  border-radius: 12px;
+  border: 1px solid #334155;
+  padding: 30px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.explanation-box ul {
+  padding-left: 20px;
+}
+.explanation-box li {
+  margin-bottom: 12px;
+}
+
+/* 4. CODE EDITOR STYLING */
+.code-block {
+  background-color: #0d1117; /* GitHub Dark bg */
+  border-radius: 12px;
+  border: 1px solid #30363d;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+  font-family: 'Fira Code', monospace;
+  font-size: 16px;
+  line-height: 1.5;
+  overflow-x: auto;
+  padding: 25px;
+  width: 100%;
+  height: 100%;
+}
+
+.code-font {
+  background: rgba(15, 23, 42, 0.8); border-radius: 4px; color: #38bdf8; font-family: 'Fira Code', monospace; padding: 2px 6px; font-size: 0.9em;
+}
+
+/* Syntax Highlighting Colors */
+.kw { color: #ff7b72; font-weight: 600; } /* Keywords: def, class, return */
+.func { color: #d2a8ff; } /* Functions: __init__, forward */
+.str { color: #a5d6ff; } /* Strings */
+.com { color: #8b949e; font-style: italic; } /* Comments */
+.num { color: #79c0ff; } /* Numbers */
+.cls { color: #ff7b72; font-weight: 600; } /* Classes: CausalSelfAttention */
+.var { color: #c9d1d9; } /* Standard variables */
+.self { color: #79c0ff; } /* self */
+.dot { color: #c9d1d9; } /* . */
+
+/* Full Background Image for Title */
+.full-bg-image { background-position: center; background-size: cover; }
+.full-bg-image::before, .full-bg-image::after { display: none; }
+.full-bg-image .content-overlay {
+  text-align: center; background: rgba(15, 23, 42, 0.85); padding: 60px; border-radius: 20px; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.text-highlight-cyan { color: #38bdf8; font-weight: 600;}
+.text-highlight-purple { color: #c084fc; font-weight: 600;}
+
+    </style>
+</head>
+<body>
+
+<!-- Slide 1: Title Slide -->
+<div class="slide-container full-bg-image" style="background-image: linear-gradient(rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.95)), url('http://googleusercontent.com/image_collection/image_retrieval/1078674674668862608');">
+    <div class="content-overlay">
+        <h1 style="color: #38bdf8;">microGPT 코드 딥다이브</h1>
+        <p style="font-size: 30px; color: #f8fafc; font-weight: 600; margin-bottom: 20px;">안드레이 카파시(Andrej Karpathy)의 최소 구현체 분석</p>
+        <p style="color: #cbd5e1; font-size: 20px; font-family: 'Fira Code', monospace;">PyTorch 코드로 이해하는 GPT 구조의 본질</p>
+    </div>
+</div>
+
+<!-- Slide 2: Data & Tokenization -->
+<div class="slide-container">
+    <h2 class="slide-title">1. 데이터 전처리와 토크나이저 (Tokenizer)</h2>
+    <div class="content-area">
+        <div class="two-column code-heavy">
+            <div class="code-block">
+<pre><span class="com"># 문자(Character) 단위의 아주 간단한 토크나이저 구축</span>
+<span class="var">chars</span> = <span class="func">sorted</span>(<span class="func">list</span>(<span class="func">set</span>(<span class="var">text</span>)))
+<span class="var">vocab_size</span> = <span class="func">len</span>(<span class="var">chars</span>)
+
+<span class="com"># 매핑 딕셔너리 생성 (문자 <-> 정수 인덱스)</span>
+<span class="var">stoi</span> = { <span class="var">ch</span>:<span class="var">i</span> <span class="kw">for</span> <span class="var">i</span>,<span class="var">ch</span> <span class="kw">in</span> <span class="func">enumerate</span>(<span class="var">chars</span>) }
+<span class="var">itos</span> = { <span class="var">i</span>:<span class="var">ch</span> <span class="kw">for</span> <span class="var">i</span>,<span class="var">ch</span> <span class="kw">in</span> <span class="func">enumerate</span>(<span class="var">chars</span>) }
+
+<span class="com"># 인코더와 디코더 함수</span>
+<span class="kw">def</span> <span class="func">encode</span>(<span class="var">s</span>):
+    <span class="kw">return</span> [<span class="var">stoi</span>[<span class="var">c</span>] <span class="kw">for</span> <span class="var">c</span> <span class="kw">in</span> <span class="var">s</span>]
+
+<span class="kw">def</span> <span class="func">decode</span>(<span class="var">l</span>):
+    <span class="kw">return</span> <span class="str">''</span><span class="dot">.</span><span class="func">join</span>([<span class="var">itos</span>[<span class="var">i</span>] <span class="kw">for</span> <span class="var">i</span> <span class="kw">in</span> <span class="var">l</span>])
+
+<span class="com"># 예시</span>
+<span class="com"># encode("hi there") -> [46, 47, 1, 58, 46, 43, 56, 43]</span></pre>
+            </div>
+            <div class="explanation-box">
+                <h3>Character-level Tokenizer</h3>
+                <p>microGPT는 복잡한 BPE(Byte-Pair Encoding) 대신 <span class="text-highlight-cyan">문자 단위(Char-level)</span>를 사용하여 복잡도를 최소화합니다.</p>
+                <ul>
+                    <li><span class="code-font">set(text)</span>: 데이터셋에 존재하는 모든 고유 문자를 추출합니다.</li>
+                    <li><span class="code-font">stoi</span> (String to Integer): 문자를 모델이 이해할 수 있는 정수(Index)로 변환합니다.</li>
+                    <li><span class="code-font">itos</span> (Integer to String): 모델이 생성한 정수(Index)를 다시 사람이 읽을 수 있는 문자로 변환합니다.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 3: CausalSelfAttention (1) -->
+<div class="slide-container">
+    <h2 class="slide-title">2. CausalSelfAttention 클래스 (초기화)</h2>
+    <div class="content-area">
+        <div class="two-column code-heavy">
+            <div class="code-block">
+<pre><span class="kw">class</span> <span class="cls">CausalSelfAttention</span>(<span class="var">nn</span><span class="dot">.</span><span class="var">Module</span>):
+    <span class="kw">def</span> <span class="func">__init__</span>(<span class="self">self</span>, <span class="var">config</span>):
+        <span class="func">super</span>()<span class="dot">.</span><span class="func">__init__</span>()
+        <span class="kw">assert</span> <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span> % <span class="var">config</span><span class="dot">.</span><span class="var">n_head</span> == <span class="num">0</span>
+        
+        <span class="com"># Q, K, V를 위한 단일 Linear 레이어 (성능 최적화)</span>
+        <span class="self">self</span><span class="dot">.</span><span class="var">c_attn</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">Linear</span>(
+            <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>, <span class="num">3</span> * <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>, <span class="var">bias</span>=<span class="kw">False</span>
+        )
+        
+        <span class="com"># Attention 결과를 다시 원래 차원으로 투영</span>
+        <span class="self">self</span><span class="dot">.</span><span class="var">c_proj</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">Linear</span>(
+            <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>, <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>, <span class="var">bias</span>=<span class="kw">False</span>
+        )
+        
+        <span class="self">self</span><span class="dot">.</span><span class="var">n_head</span> = <span class="var">config</span><span class="dot">.</span><span class="var">n_head</span>
+        <span class="self">self</span><span class="dot">.</span><span class="var">n_embd</span> = <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span></pre>
+            </div>
+            <div class="explanation-box">
+                <h3>Q, K, V 벡터의 생성</h3>
+                <p>Attention 연산을 위해서는 각 토큰마다 Query, Key, Value 3개의 벡터가 필요합니다.</p>
+                <ul>
+                    <li><span class="code-font">self.c_attn</span>: Q, K, V를 각각 따로 선언하지 않고, 한 번의 행렬 곱(<span class="text-highlight-purple">3 * n_embd</span>)으로 병렬 처리하여 속도를 높이는 것이 실무적인 최적화 기법입니다.</li>
+                    <li><span class="code-font">self.c_proj</span>: 여러 Head에서 계산된 Attention 결과를 결합한 후, 다음 레이어로 넘기기 위해 차원을 다시 맞춰줍니다.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 4: CausalSelfAttention (2) -->
+<div class="slide-container">
+    <h2 class="slide-title">3. CausalSelfAttention 클래스 (Forward)</h2>
+    <div class="content-area">
+        <div class="two-column code-heavy">
+            <div class="code-block">
+<pre><span class="kw">def</span> <span class="func">forward</span>(<span class="self">self</span>, <span class="var">x</span>):
+    <span class="var">B</span>, <span class="var">T</span>, <span class="var">C</span> = <span class="var">x</span><span class="dot">.</span><span class="func">size</span>() <span class="com"># Batch, Time, Channels</span>
+    
+    <span class="com"># 1. Q, K, V 계산 및 분리</span>
+    <span class="var">qkv</span> = <span class="self">self</span><span class="dot">.</span><span class="func">c_attn</span>(<span class="var">x</span>)
+    <span class="var">q</span>, <span class="var">k</span>, <span class="var">v</span> = <span class="var">qkv</span><span class="dot">.</span><span class="func">split</span>(<span class="self">self</span><span class="dot">.</span><span class="var">n_embd</span>, <span class="var">dim</span>=<span class="num">2</span>)
+    
+    <span class="com"># 2. Multi-head를 위해 차원 재배열 (B, nh, T, hs)</span>
+    <span class="var">k</span> = <span class="var">k</span><span class="dot">.</span><span class="func">view</span>(<span class="var">B</span>, <span class="var">T</span>, <span class="self">self</span><span class="dot">.</span><span class="var">n_head</span>, <span class="var">C</span> // <span class="self">self</span><span class="dot">.</span><span class="var">n_head</span>)<span class="dot">.</span><span class="func">transpose</span>(<span class="num">1</span>, <span class="num">2</span>)
+    <span class="var">q</span> = <span class="var">q</span><span class="dot">.</span><span class="func">view</span>(<span class="var">B</span>, <span class="var">T</span>, <span class="self">self</span><span class="dot">.</span><span class="var">n_head</span>, <span class="var">C</span> // <span class="self">self</span><span class="dot">.</span><span class="var">n_head</span>)<span class="dot">.</span><span class="func">transpose</span>(<span class="num">1</span>, <span class="num">2</span>)
+    <span class="var">v</span> = <span class="var">v</span><span class="dot">.</span><span class="func">view</span>(<span class="var">B</span>, <span class="var">T</span>, <span class="self">self</span><span class="dot">.</span><span class="var">n_head</span>, <span class="var">C</span> // <span class="self">self</span><span class="dot">.</span><span class="var">n_head</span>)<span class="dot">.</span><span class="func">transpose</span>(<span class="num">1</span>, <span class="num">2</span>)
+    
+    <span class="com"># 3. Flash Attention 적용 (PyTorch 2.0+)</span>
+    <span class="var">y</span> = <span class="var">F</span><span class="dot">.</span><span class="func">scaled_dot_product_attention</span>(
+        <span class="var">q</span>, <span class="var">k</span>, <span class="var">v</span>, <span class="var">is_causal</span>=<span class="kw">True</span>
+    )
+    
+    <span class="com"># 4. 차원 복구 및 Projection</span>
+    <span class="var">y</span> = <span class="var">y</span><span class="dot">.</span><span class="func">transpose</span>(<span class="num">1</span>, <span class="num">2</span>)<span class="dot">.</span><span class="func">contiguous</span>()<span class="dot">.</span><span class="func">view</span>(<span class="var">B</span>, <span class="var">T</span>, <span class="var">C</span>)
+    <span class="kw">return</span> <span class="self">self</span><span class="dot">.</span><span class="func">c_proj</span>(<span class="var">y</span>)</pre>
+            </div>
+            <div class="explanation-box">
+                <h3>Masked Attention 핵심</h3>
+                <p>이 코드는 GPT가 '다음 단어 예측기'로 동작하게 만드는 핵심입니다.</p>
+                <ul>
+                    <li><span class="code-font">split()</span>: 아까 붙여서 계산했던 <span class="code-font">qkv</span>를 다시 3조각으로 나눕니다.</li>
+                    <li><span class="code-font">is_causal=True</span>: PyTorch 내장 함수를 사용하여 최적화된 연산을 수행합니다. 이 옵션이 <strong>과거의 토큰이 미래의 토큰을 보지 못하게(Masking) 막는 역할</strong>을 합니다. (생성 모델의 필수 조건)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 5: MLP & Block -->
+<div class="slide-container">
+    <h2 class="slide-title">4. MLP와 Block (Transformer 1계층)</h2>
+    <div class="content-area">
+        <div class="two-column code-heavy">
+            <div class="code-block">
+<pre><span class="kw">class</span> <span class="cls">MLP</span>(<span class="var">nn</span><span class="dot">.</span><span class="var">Module</span>):
+    <span class="kw">def</span> <span class="func">__init__</span>(<span class="self">self</span>, <span class="var">config</span>):
+        <span class="func">super</span>()<span class="dot">.</span><span class="func">__init__</span>()
+        <span class="self">self</span><span class="dot">.</span><span class="var">c_fc</span>   = <span class="var">nn</span><span class="dot">.</span><span class="var">Linear</span>(<span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>, <span class="num">4</span> * <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>)
+        <span class="self">self</span><span class="dot">.</span><span class="var">gelu</span>   = <span class="var">nn</span><span class="dot">.</span><span class="var">GELU</span>()
+        <span class="self">self</span><span class="dot">.</span><span class="var">c_proj</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">Linear</span>(<span class="num">4</span> * <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>, <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>)
+
+    <span class="kw">def</span> <span class="func">forward</span>(<span class="self">self</span>, <span class="var">x</span>):
+        <span class="kw">return</span> <span class="self">self</span><span class="dot">.</span><span class="func">c_proj</span>(<span class="self">self</span><span class="dot">.</span><span class="func">gelu</span>(<span class="self">self</span><span class="dot">.</span><span class="func">c_fc</span>(<span class="var">x</span>)))
+
+<span class="kw">class</span> <span class="cls">Block</span>(<span class="var">nn</span><span class="dot">.</span><span class="var">Module</span>):
+    <span class="kw">def</span> <span class="func">__init__</span>(<span class="self">self</span>, <span class="var">config</span>):
+        <span class="func">super</span>()<span class="dot">.</span><span class="func">__init__</span>()
+        <span class="self">self</span><span class="dot">.</span><span class="var">ln_1</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">LayerNorm</span>(<span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>)
+        <span class="self">self</span><span class="dot">.</span><span class="var">attn</span> = <span class="var">CausalSelfAttention</span>(<span class="var">config</span>)
+        <span class="self">self</span><span class="dot">.</span><span class="var">ln_2</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">LayerNorm</span>(<span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>)
+        <span class="self">self</span><span class="dot">.</span><span class="var">mlp</span> = <span class="var">MLP</span>(<span class="var">config</span>)
+
+    <span class="kw">def</span> <span class="func">forward</span>(<span class="self">self</span>, <span class="var">x</span>):
+        <span class="var">x</span> = <span class="var">x</span> + <span class="self">self</span><span class="dot">.</span><span class="func">attn</span>(<span class="self">self</span><span class="dot">.</span><span class="func">ln_1</span>(<span class="var">x</span>))
+        <span class="var">x</span> = <span class="var">x</span> + <span class="self">self</span><span class="dot">.</span><span class="func">mlp</span>(<span class="self">self</span><span class="dot">.</span><span class="func">ln_2</span>(<span class="var">x</span>))
+        <span class="kw">return</span> <span class="var">x</span></pre>
+            </div>
+            <div class="explanation-box">
+                <h3>Residual & LayerNorm</h3>
+                <p>하나의 Transformer Block은 Attention과 Feed-Forward Network(MLP)로 구성됩니다.</p>
+                <ul>
+                    <li><span class="code-font">MLP</span>: Attention으로 섞인 토큰 정보들에 대해 비선형적(GELU) 계산을 수행하여 모델의 표현력을 높입니다. (차원을 4배로 키웠다가 줄임)</li>
+                    <li><span class="code-font">x = x + ...</span>: <span class="text-highlight-cyan">Residual Connection(잔차 연결)</span>입니다. 깊은 신경망에서도 기울기(Gradient)가 소실되지 않고 잘 흐르도록 돕습니다.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 6: GPT Main Model -->
+<div class="slide-container">
+    <h2 class="slide-title">5. GPT 모델 전체 조립</h2>
+    <div class="content-area">
+        <div class="two-column code-heavy">
+            <div class="code-block">
+<pre><span class="kw">class</span> <span class="cls">GPT</span>(<span class="var">nn</span><span class="dot">.</span><span class="var">Module</span>):
+    <span class="kw">def</span> <span class="func">__init__</span>(<span class="self">self</span>, <span class="var">config</span>):
+        <span class="func">super</span>()<span class="dot">.</span><span class="func">__init__</span>()
+        <span class="self">self</span><span class="dot">.</span><span class="var">config</span> = <span class="var">config</span>
+
+        <span class="self">self</span><span class="dot">.</span><span class="var">transformer</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">ModuleDict</span>(<span class="func">dict</span>(
+            <span class="com"># 토큰 임베딩 (단어 사전 -> 벡터)</span>
+            <span class="var">wte</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">Embedding</span>(<span class="var">config</span><span class="dot">.</span><span class="var">vocab_size</span>, <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>),
+            <span class="com"># 위치 임베딩 (위치 순서 -> 벡터)</span>
+            <span class="var">wpe</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">Embedding</span>(<span class="var">config</span><span class="dot">.</span><span class="var">block_size</span>, <span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>),
+            <span class="com"># Transformer Block들을 반복 생성</span>
+            <span class="var">h</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">ModuleList</span>([<span class="var">Block</span>(<span class="var">config</span>) <span class="kw">for</span> <span class="var">_</span> <span class="kw">in</span> <span class="func">range</span>(<span class="var">config</span><span class="dot">.</span><span class="var">n_layer</span>)]),
+            <span class="com"># 최종 LayerNorm</span>
+            <span class="var">ln_f</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">LayerNorm</span>(<span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>),
+        ))
+        
+        <span class="com"># 최종 단어 예측을 위한 Linear Layer (Logits 출력)</span>
+        <span class="self">self</span><span class="dot">.</span><span class="var">lm_head</span> = <span class="var">nn</span><span class="dot">.</span><span class="var">Linear</span>(<span class="var">config</span><span class="dot">.</span><span class="var">n_embd</span>, <span class="var">config</span><span class="dot">.</span><span class="var">vocab_size</span>, <span class="var">bias</span>=<span class="kw">False</span>)</pre>
+            </div>
+            <div class="explanation-box">
+                <h3>아키텍처의 완성</h3>
+                <p>앞서 만든 Block을 쌓아 완전한 GPT를 만듭니다.</p>
+                <ul>
+                    <li><span class="code-font">wte (Word Token Embedding)</span>: 입력된 정수(토큰)를 의미를 담은 벡터로 변환.</li>
+                    <li><span class="code-font">wpe (Word Positional Embedding)</span>: "단어의 순서" 정보를 벡터로 변환. Attention은 순서를 모르기 때문에 필수적입니다.</li>
+                    <li><span class="code-font">lm_head</span>: 최종 벡터를 다시 사전 크기(vocab_size)로 변환하여 <span class="text-highlight-purple">어떤 단어가 올지 점수(Logits)</span>를 냅니다.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 7: Forward & Loss -->
+<div class="slide-container">
+    <h2 class="slide-title">6. 순전파(Forward)와 손실(Loss) 계산</h2>
+    <div class="content-area">
+        <div class="two-column code-heavy">
+            <div class="code-block">
+<pre><span class="kw">def</span> <span class="func">forward</span>(<span class="self">self</span>, <span class="var">idx</span>, <span class="var">targets</span>=<span class="kw">None</span>):
+    <span class="var">B</span>, <span class="var">T</span> = <span class="var">idx</span><span class="dot">.</span><span class="func">size</span>()
+    <span class="var">pos</span> = <span class="var">torch</span><span class="dot">.</span><span class="func">arange</span>(<span class="num">0</span>, <span class="var">T</span>, <span class="var">dtype</span>=<span class="var">torch</span><span class="dot">.</span><span class="var">long</span>, <span class="var">device</span>=<span class="var">idx</span><span class="dot">.</span><span class="var">device</span>)
+    
+    <span class="com"># 토큰 벡터 + 위치 벡터</span>
+    <span class="var">tok_emb</span> = <span class="self">self</span><span class="dot">.</span><span class="var">transformer</span><span class="dot">.</span><span class="var">wte</span>(<span class="var">idx</span>)
+    <span class="var">pos_emb</span> = <span class="self">self</span><span class="dot">.</span><span class="var">transformer</span><span class="dot">.</span><span class="var">wpe</span>(<span class="var">pos</span>)
+    <span class="var">x</span> = <span class="var">tok_emb</span> + <span class="var">pos_emb</span>
+    
+    <span class="com"># Block 통과</span>
+    <span class="kw">for</span> <span class="var">block</span> <span class="kw">in</span> <span class="self">self</span><span class="dot">.</span><span class="var">transformer</span><span class="dot">.</span><span class="var">h</span>:
+        <span class="var">x</span> = <span class="var">block</span>(<span class="var">x</span>)
+    <span class="var">x</span> = <span class="self">self</span><span class="dot">.</span><span class="var">transformer</span><span class="dot">.</span><span class="var">ln_f</span>(<span class="var">x</span>)
+    <span class="var">logits</span> = <span class="self">self</span><span class="dot">.</span><span class="var">lm_head</span>(<span class="var">x</span>)
+    
+    <span class="var">loss</span> = <span class="kw">None</span>
+    <span class="kw">if</span> <span class="var">targets</span> <span class="kw">is not None</span>:
+        <span class="com"># 예측값(logits)과 실제 정답(targets) 사이의 오차 계산</span>
+        <span class="var">loss</span> = <span class="var">F</span><span class="dot">.</span><span class="func">cross_entropy</span>(
+            <span class="var">logits</span><span class="dot">.</span><span class="func">view</span>(-<span class="num">1</span>, <span class="var">logits</span><span class="dot">.</span><span class="func">size</span>(-<span class="num">1</span>)), 
+            <span class="var">targets</span><span class="dot">.</span><span class="func">view</span>(-<span class="num">1</span>)
+        )
+    <span class="kw">return</span> <span class="var">logits</span>, <span class="var">loss</span></pre>
+            </div>
+            <div class="explanation-box">
+                <h3>예측과 정답의 비교</h3>
+                <p>데이터가 모델을 통과하여 학습되는 과정입니다.</p>
+                <ul>
+                    <li><span class="code-font">tok_emb + pos_emb</span>: 단어의 의미 정보와 위치 정보를 단순히 더해서 입력으로 사용합니다.</li>
+                    <li><span class="code-font">F.cross_entropy</span>: 모델이 예측한 다음 단어의 확률 분포(logits)와 실제 다음 단어(targets)의 차이를 계산합니다. 이 <strong>loss를 최소화</strong>하는 것이 학습의 목표입니다.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 8: Generation (Autoregressive) -->
+<div class="slide-container">
+    <h2 class="slide-title">7. 텍스트 생성 루프 (Generate)</h2>
+    <div class="content-area">
+        <div class="two-column code-heavy">
+            <div class="code-block">
+<pre><span class="com"># @torch.no_grad()를 통해 그래디언트 계산 비활성화 (추론 모드)</span>
+<span class="kw">def</span> <span class="func">generate</span>(<span class="self">self</span>, <span class="var">idx</span>, <span class="var">max_new_tokens</span>):
+    <span class="kw">for</span> <span class="var">_</span> <span class="kw">in</span> <span class="func">range</span>(<span class="var">max_new_tokens</span>):
+        <span class="com"># Context 길이를 모델의 한계치로 자름</span>
+        <span class="var">idx_cond</span> = <span class="var">idx</span>[:, -<span class="self">self</span><span class="dot">.</span><span class="var">config</span><span class="dot">.</span><span class="var">block_size</span>:]
+        
+        <span class="com"># 모델에 입력하여 Logits 획득 (Loss는 무시)</span>
+        <span class="var">logits</span>, <span class="var">_</span> = <span class="self">self</span>(<span class="var">idx_cond</span>)
+        
+        <span class="com"># 마지막 토큰(시계열의 맨 끝)의 Logits만 추출</span>
+        <span class="var">logits</span> = <span class="var">logits</span>[:, -<span class="num">1</span>, :] 
+        
+        <span class="com"># Softmax로 확률 분포 변환</span>
+        <span class="var">probs</span> = <span class="var">F</span><span class="dot">.</span><span class="func">softmax</span>(<span class="var">logits</span>, <span class="var">dim</span>=-<span class="num">1</span>)
+        
+        <span class="com"># 확률에 따라 다음 토큰 1개 샘플링 (주사위 굴리기)</span>
+        <span class="var">idx_next</span> = <span class="var">torch</span><span class="dot">.</span><span class="func">multinomial</span>(<span class="var">probs</span>, <span class="var">num_samples</span>=<span class="num">1</span>)
+        
+        <span class="com"># 기존 시퀀스에 생성된 토큰 이어붙이기 (Append)</span>
+        <span class="var">idx</span> = <span class="var">torch</span><span class="dot">.</span><span class="func">cat</span>((<span class="var">idx</span>, <span class="var">idx_next</span>), <span class="var">dim</span>=<span class="num">1</span>)
+        
+    <span class="kw">return</span> <span class="var">idx</span></pre>
+            </div>
+            <div class="explanation-box">
+                <h3>자기회귀적(Autoregressive) 생성</h3>
+                <p>LLM이 텍스트를 만들어내는 과정을 코드로 명확히 볼 수 있습니다.</p>
+                <ul>
+                    <li><span class="code-font">logits[:, -1, :]</span>: 방금까지 입력된 문맥을 보고 예측한 <strong>'바로 다음 단어'</strong>의 점수만 가져옵니다.</li>
+                    <li><span class="code-font">torch.multinomial</span>: 가장 높은 점수를 무조건 고르지 않고 확률 분포에 따라 샘플링합니다. (다양한 문장 생성의 이유)</li>
+                    <li><span class="code-font">torch.cat</span>: 예측된 단어를 입력의 맨 뒤에 붙이고, 다시 루프의 처음으로 돌아갑니다.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 9: Conclusion -->
+<div class="slide-container">
+    <h2 class="slide-title">정리: microGPT가 알려주는 진실</h2>
+    <div class="content-area">
+        <div style="display: flex; gap: 30px; width: 100%; height: 100%; align-items: stretch; margin-top: 20px;">
+            <div class="explanation-box" style="flex: 1; text-align: center;">
+                <h3 style="color: #38bdf8; font-size: 30px; margin-bottom: 20px;">단순한 구조의 반복</h3>
+                <p style="font-size: 20px; line-height: 1.6;">수십억 개의 파라미터를 가진 거대한 GPT-4나 챗GPT도 근본적인 뼈대는 이 <span class="text-highlight-cyan">Block (Attention + MLP)의 거대한 반복</span>에 불과합니다.</p>
+            </div>
+            <div class="explanation-box" style="flex: 1; text-align: center;">
+                <h3 style="color: #c084fc; font-size: 30px; margin-bottom: 20px;">마법이 아닌 확률 연산</h3>
+                <p style="font-size: 20px; line-height: 1.6;">AI가 문맥을 '이해'하는 것처럼 보이지만, 내부적으로는 단순히 벡터의 내적(<span class="code-font">Q * K^T</span>)과 확률 샘플링(<span class="code-font">multinomial</span>) 연산입니다.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
