@@ -78,5 +78,8 @@ print(message.content[0].text)
 2. **특수 도구**: `Claude Code` 등 Anthropic 전용 생태계 도구를 사용해야 할 때는 **Anthropic 호환 기능**을 활용하세요.
 3. **로컬 전용**: 모델 관리나 Ollama만의 특수 기능이 필요할 때만 Native API(`/api`)를 사용하세요.
 
+## 5. 설치
+sudo curl -fsSL https://ollama.com/install.sh | sh
+
 ---
 *작성일: 2026년 2월 26일*
