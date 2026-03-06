@@ -94,7 +94,7 @@ Cloud LLM(OpenAI 등)만 사용한다면 서버의 GPU 성능은 큰 의미가 �
 
 ## **2\. 파이썬 가상환경 설정 및 이식성 전략**
 
-학생들이 가장 흔히 하는 실수는 Windows에서 설치한 라이브러리 폴더(venv)를 그대로 서버에 복사하는 것입니다. 이는 절대 작동하지 않습니다. 대신 아래의 **"Freeze & Install"** 방식을 사용해야 합니다.
+가장 흔히 하는 실수는 Windows에서 설치한 라이브러리 폴더(venv)를 그대로 서버에 복사하는 것입니다. 이는 절대 작동하지 않습니다. 대신 아래의 **"Freeze & Install"** 방식을 사용해야 합니다.
 
 ### **Step 1: PC(Windows)에서 환경 내보내기**
 
@@ -103,7 +103,7 @@ Cloud LLM(OpenAI 등)만 사용한다면 서버의 GPU 성능은 큰 의미가 �
 ```Bash
 # 가상환경 활성화 상태에서 실행
 
-pip freeze \> requirements.txt
+pip freeze > requirements.txt
 ```
 
 ### **Step 2: 서버(Linux)에서 환경 재구축**
@@ -114,12 +114,12 @@ pip freeze \> requirements.txt
 
 # 1\. 저장소 복제 (Git 사용 권장)
 
-git clone \<your-repo-url\>
-cd \<project-folder\>
+git clone <your-repo-url\>
+cd <project-folder\>
 
 # 2\. 가상환경 생성
 
-python3 \-m venv venv
+python3 -m venv venv
 
 # 3\. 가상환경 활성화
 
@@ -127,8 +127,8 @@ source venv/bin/activate
 
 # 4\. 라이브러리 일괄 설치
 
-pip install \--upgrade pip
-pip install \-r requirements.txt
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
 ---
@@ -137,20 +137,19 @@ pip install \-r requirements.txt
 
 Windows PC와 Linux 서버는 GPU 드라이버와 CUDA 버전이 다를 수 있습니다. requirements.txt에 torch가 포함되어 있더라도, GPU 서버에서는 해당 환경의 CUDA 버전에 맞는 명령어로 재설치하는 것이 안전합니다.
 
-* **추천 방식**: [PyTorch 공식 사이트](https://pytorch.org/get-started/locally/)에서 서버의 CUDA 버전(예: 12.1 또는 12.4)에 맞는 설치 명령어를 복사해 실행하도록 가이드하세요.  
+* **추천 방식**: [PyTorch 공식 사이트](https://pytorch.org/get-started/locally/)에서 서버의 CUDA 버전(예: 13.0)에 맞는 설치 명령어를 복사해 실행하도록 가이드하세요.  
 
-``Bash
+```Bash
 
-\# 예시: CUDA 12.1용 PyTorch 설치
+# 예시: CUDA 13.0용 PyTorch 설치
 
-pip install torch torchvision torchaudio \--index-url https://download.pytorch.org/whl/cu121
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 
-*   
-* 
+```
 
 ---
 
-## **4\. 더 높은 수준의 이식성: Docker 활용 (권장)**
+## **4. 더 높은 수준의 이식성: Docker 활용 (권장)**
 
 만약 학생들이 조금 더 실무적인 방식을 배우길 원한다면, **Docker** 사용을 강력히 추천합니다.
 
