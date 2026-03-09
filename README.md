@@ -167,4 +167,31 @@ Storage : 500GB
 
 ---
 
-_최종 수정일: 2026년 2월 26일_
+## GPU 서버 환경 설정
+
+### 6. 수업용 노트북 만들기 가이드
+
+  6-1. 시스템 자원
+    - CPU : 128 core(논리 코어)
+    - Memory : 503Gi
+    - GPU : L40s 4개(GPU Memory 48GB)
+
+  6-2. 적정 GPU 노트북 설정
+```
+이미지 : 
+kubeflow-custom-images/vscode-python-cuda-full:v1.10.1-nvcc
+-     CPU : 8 core
+-    Memory : 60Gi
+-    GPU : 1개
+-    Volume Size : 필요한 데이터에 맞추어서 설정(100Gi 이상 가능하나 데이터 쓰기/읽기가 느림)
+```
+![화면](docs/images/notebooks.png)
+
+  6-3. FAISS 사용할 때 주의 사항 : numpy 2.x와 호환되지 않음
+    conda와 pip로 설치된 numpy를 모두 지우고 numpy 1.x 버전으로 다시 설치
+
+  6-4. gradio 사용할 때 pillow 관련 에러가 발생할 수 있음
+    conda와 pip로 설치된 pillow를 삭제하고 다시 설치
+
+
+
