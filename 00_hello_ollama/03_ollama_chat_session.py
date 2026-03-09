@@ -2,7 +2,7 @@
 
 import ollama
 
-model = 'qwen2.5:7b'
+model = 'qwen3:8b'
 messages = []
 
 while True:
@@ -15,4 +15,4 @@ while True:
     print(f"Assistant: {assistant_message}")
     
     messages.append({'role': 'assistant', 'content': assistant_message})
-    # print(f"Messages: {messages}")
+    print(f"Messages: {messages}")

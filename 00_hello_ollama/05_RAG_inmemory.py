@@ -6,7 +6,7 @@ documents = [
     "바다가 파란 이유도 하늘의 반사와 산란 때문이다.",
     "일몰 때 하늘이 붉게 보이는 이유는 빛의 경로가 길어져 파장이 긴 빛만 남기 때문이다."
 ]
-model = 'qwen2.5:7b'
+model = 'qwen3:8b'
 # 2. 문서 임베딩 생성 (벡터 DB에 저장할 수 있음)
 doc_embeddings = [ollama.embeddings(model=model, prompt=doc)['embedding'] for doc in documents]
 

@@ -6,6 +6,6 @@
 
 import ollama
 
-embeddings = ollama.embeddings(model='qwen2.5:7b', prompt='임베딩을 생성할 문장')
+embeddings = ollama.embeddings(model='qwen3:8b', prompt='임베딩을 생성할 문장')
 print(embeddings['embedding'])  # 숫자 리스트 출력
 print(len(embeddings['embedding']))

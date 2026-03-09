@@ -2,7 +2,7 @@
 
 import ollama
 
-model = 'qwen2.5:7b'
+model = 'qwen3:8b'
 stream = ollama.chat(
     model=model,
     messages=[{'role': 'user', 'content': '한국의 수도는?'}],

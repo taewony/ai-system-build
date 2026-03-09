@@ -11,7 +11,7 @@ client = OpenAI(
     api_key='ollama',
 )
 
-model = 'qwen2.5:7b'
+model = 'qwen3:8b'
 
 print(f"--- OpenAI SDK를 통해 {model} 모델에 질문을 보냅니다. ---")
 

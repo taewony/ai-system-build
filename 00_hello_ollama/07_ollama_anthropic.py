@@ -12,7 +12,7 @@ client = anthropic.Anthropic(
 )
 
 # 사용하려는 로컬 모델명을 입력합니다.
-model = 'qwen2.5:7b' 
+model = 'qwen3:8b' 
 
 print(f"--- [Step 1] Anthropic SDK를 통해 {model} 모델에 연결되었습니다. ---")
 
@@ -31,15 +31,23 @@ try:
         ]
     )
 
-    # 3. 결과 출력
-    # Anthropic 응답 구조(message.content[0].text)에 맞춰 텍스트를 추출합니다.
-    print("" + "="*50)
+    print("="*50)
     print("[Anthropic SDK 스타일 응답]:")
-    print(message.content[0].text)
+    
+    # 수정된 부분: content 리스트를 돌며 TextBlock만 추출
+    full_text = ""
+    for block in message.content:
+        # block이 TextBlock 타입인 경우에만 text를 가져옴
+        if hasattr(block, 'text'):
+            full_text += block.text
+        # 만약 ThinkingBlock이라면 무시하거나 별도로 처리 가능
+        elif hasattr(block, 'thinking'):
+            print(f"[모델의 생각]: {block.thinking}\n")
+
+    print(full_text)
     print("="*50)
 
 except Exception as e:
     print(f"❌ 오류 발생: {e}")
-    print("팁: Ollama 버전이 v0.14.0 이상인지 확인하고, 모델이 설치되어 있는지 확인하세요.")
 
 print("--- 실행이 완료되었습니다. ---")

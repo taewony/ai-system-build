@@ -34,7 +34,7 @@ documents = [
     "달은 지구의 유일한 자연 위성으로 인류가 직접 발을 디딘 곳입니다."
 ]
 
-model = 'qwen2.5:7b'
+model = 'qwen3:8b'
 
 print(f"--- [Step 1] 총 {len(documents)}개의 문서를 지식 베이스에 등록했습니다. ---")
 
