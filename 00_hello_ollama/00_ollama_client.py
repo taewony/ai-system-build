@@ -1,5 +1,5 @@
 from ollama import Client
-model = 'qwen2.5:7b'
+model = 'qwen3:8b'
 client = Client(
   host='http://localhost:11434',
   headers={'x-some-header': 'some-value'}
