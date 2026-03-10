@@ -7,7 +7,17 @@ vLLM은 모델을 실행하기 전, 모델의 '설계도(Metadata)'를 먼저 �
 ## 1. 왜 메타데이터를 분석해야 하나요?
 
 우리가 집을 짓기 전 설계도를 보듯, vLLM은 모델의 `config.json`을 분석하여 다음을 결정합니다.
-
+  1. GQA (Grouped Query Attention):
+       - Attention Heads와 KV Heads의 비율을 보면 됩니다.
+       - 만약 Heads가 32개인데 KV Heads가 8개라면, 4개의 Attention Head가 1개의 KV Cache를 공유한다는 뜻입니다. (메모리
+         75% 절약!)
+   2. KV Cache 메모리 계산:
+       - 한 단어가 생성될 때마다 GPU 메모리가 얼마나 소모되는지(bytes_per_token)를 계산합니다.
+       - vLLM은 이 수치를 보고 "내 GPU 메모리에 최대 몇 단어(Block)를 저장할 수 있는가?"를 결정하여 `BlockManager`를
+         초기화합니다.
+   3. Tensor Parallel (TP):
+       - 모델의 Head 개수가 사용하려는 GPU 개수로 나누어지는지 확인하여 병렬 처리 가능 여부를 판단합니다.
+       
 1.  **KV Cache 크기**: 한 단어(Token)를 저장할 때 몇 바이트가 필요한가?
 2.  **병렬 처리 전략**: 이 모델의 Head 개수가 내 GPU 개수로 나누어지는가?
 3.  **GQA(Grouped Query Attention) 적용 여부**: 메모리를 얼마나 아낄 수 있는 모델인가?
