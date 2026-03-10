@@ -6,6 +6,9 @@
 
 import ollama
 
-embeddings = ollama.embeddings(model='qwen3:8b', prompt='임베딩을 생성할 문장')
+embeddings = ollama.embeddings(
+    model='nomic-embed-text',   # 임베딩 전용 모델 사용
+    prompt='임베딩을 생성할 문장'
+)
 print(embeddings['embedding'])  # 숫자 리스트 출력
-print(len(embeddings['embedding']))
+print(len(embeddings['embedding'])) # 768 차원
