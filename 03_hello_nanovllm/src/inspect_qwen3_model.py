@@ -181,8 +181,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "model_path",
         nargs="?",                      # argument optional
-        default="./models/huggingface/Qwen3-8B",    # default path
-        help="HuggingFace model path (default: ./models/huggingface/Qwen3-8B)"
+        default="/home/jovyan/shared-data/models/huggingface/Qwen3-8B",    # default path
+        help="HuggingFace model path (default: /home/jovyan/shared-data/models/huggingface/Qwen3-8B)"
     )
 
     args = parser.parse_args()
