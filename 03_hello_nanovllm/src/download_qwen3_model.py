@@ -1,10 +1,11 @@
 from huggingface_hub import snapshot_download
+import os
 
 # Hugging Face repository
 repo_id = "Qwen/Qwen3-8B"
 
 # Local directory where the model will be stored
-local_dir = "./models/Qwen3-8B"
+local_dir = os.path.expanduser("~/shared-data/models/huggingface/Qwen3-8B")
 
 # Download the full repository snapshot
 snapshot_download(

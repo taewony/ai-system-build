@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from transformers import AutoConfig
 
 
-DEFAULT_MODEL_PATH = "./models/Qwen3-8B"
+DEFAULT_MODEL_PATH = "./models/huggingface/Qwen3-8B"
 
 
 # ------------------------------------------------

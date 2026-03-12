@@ -181,8 +181,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "model_path",
         nargs="?",                      # argument optional
-        default="./models/Qwen3-8B",    # default path
-        help="HuggingFace model path (default: ./models/Qwen3-8B)"
+        default="./models/huggingface/Qwen3-8B",    # default path
+        help="HuggingFace model path (default: ./models/huggingface/Qwen3-8B)"
     )
 
     args = parser.parse_args()
