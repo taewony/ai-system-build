@@ -5,7 +5,7 @@ from pathlib import Path  # 이 라인이 반드시 필요합니다.
 
 def main():
     # 상대 경로를 절대 경로로 변환
-    model_path = Path("/home/jovyan/ai-system-build/models/Qwen3-8B").resolve()
+    model_path = Path("/home/jovyan/shared-data/models/huggingface/Qwen3-8B").resolve()
     if not (model_path / "config.json").exists():
         print(f"❌ 모델 파일을 찾을 수 없습니다: {model_path}")
         return
