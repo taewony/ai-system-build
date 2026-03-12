@@ -39,8 +39,9 @@ def main():
         )
         for prompt in prompts
     ]
-    outputs = llm.generate(prompts, sampling_params)
 
+    print("Batch Processing started.")
+    outputs = llm.generate(prompts, sampling_params)
     for prompt, output in zip(prompts, outputs):
         print("\n")
         print(f"Prompt: {prompt!r}")
@@ -50,6 +51,12 @@ def main():
         print("\n")
         print(f"prefill_time: {output['prefill_time']!r}")
         print(f"decode_time: {output['decode_time']!r}")
+
+    print("질문을 하나씩 따로 호출 시작.")
+    for prompt in prompts:
+       output = llm.generate([prompt], sampling_params)[0] # 리스트로 감싸서 하나씩 전달
+       print(f"Prompt: {prompt}")
+       print(f"Prefill: {output['prefill_time']:.4f}s, Decode: {output['decode_time']:.4f}s")
 
 if __name__ == "__main__":
     main()
