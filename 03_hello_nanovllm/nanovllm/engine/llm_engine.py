@@ -47,9 +47,16 @@ class LLMEngine:
 
     def step(self):
         seqs, is_prefill = self.scheduler.schedule()
+        t0 = perf_counter()
         token_ids = self.model_runner.call("run", seqs, is_prefill)
+        duration = perf_counter() - t0
+        for seq in seqs:
+            if is_prefill:
+                seq.prefill_time += duration
+            else:
+                seq.decode_time += duration
         self.scheduler.postprocess(seqs, token_ids)
-        outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]
+        outputs = [(seq.seq_id, seq.completion_token_ids, seq.prefill_time, seq.decode_time) for seq in seqs if seq.is_finished]
         num_tokens = sum(len(seq) for seq in seqs) if is_prefill else -len(seqs)
         return outputs, num_tokens
 
@@ -82,12 +89,19 @@ class LLMEngine:
                     "Prefill": f"{int(prefill_throughput)}tok/s",
                     "Decode": f"{int(decode_throughput)}tok/s",
                 })
-            for seq_id, token_ids in output:
-                outputs[seq_id] = token_ids
+            for seq_id, token_ids, prefill_time, decode_time in output:
+                outputs[seq_id] = (token_ids, prefill_time, decode_time)
                 if use_tqdm:
                     pbar.update(1)
-        outputs = [outputs[seq_id] for seq_id in sorted(outputs.keys())]
-        outputs = [{"text": self.tokenizer.decode(token_ids), "token_ids": token_ids} for token_ids in outputs]
+        final_outputs = []
+        for seq_id in sorted(outputs.keys()):
+            token_ids, prefill_time, decode_time = outputs[seq_id]
+            final_outputs.append({
+                "text": self.tokenizer.decode(token_ids),
+                "token_ids": token_ids,
+                "prefill_time": prefill_time,
+                "decode_time": decode_time,
+            })
         if use_tqdm:
             pbar.close()
-        return outputs
+        return final_outputs

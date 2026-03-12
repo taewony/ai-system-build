@@ -46,6 +46,10 @@ def main():
         print(f"Prompt: {prompt!r}")
         print(f"Completion: {output['text']!r}")
 
+    for prompt, output in zip(prompts, outputs):
+        print("\n")
+        print(f"prefill_time: {output['prefill_time']!r}")
+        print(f"decode_time: {output['decode_time']!r}")
 
 if __name__ == "__main__":
     main()
