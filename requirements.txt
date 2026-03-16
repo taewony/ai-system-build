@@ -43,12 +43,14 @@ defusedxml @ file:///home/conda/feedstock_root/build_artifacts/defusedxml_161523
 dill==0.4.0
 distro @ file:///home/conda/feedstock_root/build_artifacts/distro_1734729835256/work
 docstring_parser==0.16
+einops==0.8.2
 exceptiongroup @ file:///home/conda/feedstock_root/build_artifacts/exceptiongroup_1733208806608/work
 executing @ file:///home/conda/feedstock_root/build_artifacts/executing_1733569351617/work
 fastapi==0.122.0
 fastjsonschema @ file:///home/conda/feedstock_root/build_artifacts/python-fastjsonschema_1733235979760/work/dist
 ffmpy==1.0.0
 filelock==3.13.1
+flash_attn==2.8.3
 fonttools @ file:///home/conda/feedstock_root/build_artifacts/fonttools_1738940303262/work
 fqdn @ file:///home/conda/feedstock_root/build_artifacts/fqdn_1733327382592/work/dist
 frozendict @ file:///home/conda/feedstock_root/build_artifacts/frozendict_1728841334936/work
@@ -137,9 +139,10 @@ nbdime==4.0.2
 nbformat @ file:///home/conda/feedstock_root/build_artifacts/nbformat_1733402752141/work
 nest_asyncio @ file:///home/conda/feedstock_root/build_artifacts/nest-asyncio_1733325553580/work
 networkx @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_networkx_1731521053/work
+ninja==1.13.0
 notebook @ file:///home/conda/feedstock_root/build_artifacts/notebook_1734789425270/work
 notebook_shim @ file:///home/conda/feedstock_root/build_artifacts/notebook-shim_1733408315203/work
-numpy @ file:///home/conda/feedstock_root/build_artifacts/numpy_1707225376651/work/dist/numpy-1.26.4-cp311-cp311-linux_x86_64.whl#sha256=d08e1c9e5833ae7780563812aa73e2497db1ee3bd5510d3becb8aa18aa2d0c7c
+numpy==1.26.4
 nvidia-cublas-cu12==12.4.5.8
 nvidia-cuda-cupti-cu12==12.4.127
 nvidia-cuda-nvrtc-cu12==12.4.127
@@ -212,8 +215,8 @@ ruamel.yaml.clib @ file:///home/conda/feedstock_root/build_artifacts/ruamel.yaml
 safehttpx==0.1.7
 safetensors==0.7.0
 scikit-image @ file:///home/conda/feedstock_root/build_artifacts/scikit-image_1738045313673/work/dist/scikit_image-0.25.1-cp311-cp311-linux_x86_64.whl#sha256=25eb356fc8660d720ef40abf0d9042c72a982ccef2212ac53c82c7bfdc0c3385
-scikit-learn @ file:///home/conda/feedstock_root/build_artifacts/scikit-learn_1736496745968/work/dist/scikit_learn-1.6.1-cp311-cp311-linux_x86_64.whl#sha256=d3f0d01ef376cb8d55cead654a824455f1021124eef49bbd1bd03ba7954d3028
-scipy @ file:///home/conda/feedstock_root/build_artifacts/scipy-split_1736617239826/work/dist/scipy-1.15.1-cp311-cp311-linux_x86_64.whl#sha256=8856b6c360df6ae25f197c7becf37df2d6b6e1894cec8606b74bad7b30b05cac
+scikit-learn==1.8.0
+scipy==1.12.0
 seaborn @ file:///home/conda/feedstock_root/build_artifacts/seaborn-split_1733730015268/work
 semantic-version==2.10.0
 Send2Trash @ file:///home/conda/feedstock_root/build_artifacts/send2trash_1733322040660/work
