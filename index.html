@@ -6,13 +6,12 @@
     <title>Quick Sort Visualization</title>
     <style>
         :root {
-            --bg-color: #f4f7f6;
+            --bg-color: #f0f2f5;
+            --bar-default: #8e9eab;
+            --bar-pivot: #3498db;
+            --bar-swap: #e74c3c;
+            --bar-sorted: #2ecc71;
             --text-color: #333;
-            --bar-default: #cbd5e1;
-            --bar-pivot: #ef4444; /* Red */
-            --bar-compare: #3b82f6; /* Blue */
-            --bar-swap: #f59e0b; /* Amber */
-            --bar-done: #10b981; /* Green */
         }
 
         body {
@@ -36,7 +35,7 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             margin-bottom: 20px;
             display: flex;
-            gap: 15px;
+            gap: 20px;
             align-items: center;
             flex-wrap: wrap;
             justify-content: center;
@@ -51,277 +50,256 @@
             transition: background 0.2s;
         }
 
-        #start-btn { background-color: #3b82f6; color: white; }
-        #start-btn:hover { background-color: #2563eb; }
-        #start-btn:disabled { background-color: #9ca3af; cursor: not-allowed; }
+        .btn-start { background-color: #2ecc71; color: white; }
+        .btn-start:hover { background-color: #27ae60; }
+        
+        .btn-reset { background-color: #95a5a6; color: white; }
+        .btn-reset:hover { background-color: #7f8c8d; }
 
-        #reset-btn { background-color: #ef4444; color: white; }
-        #reset-btn:hover { background-color: #dc2626; }
-
-        .status {
-            font-size: 0.9rem;
-            color: #555;
-            min-width: 150px;
-            text-align: center;
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .container {
-            width: 100%;
+        .array-container {
+            width: 90%;
             max-width: 800px;
-            height: 400px;
+            height: 300px;
             background: white;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 10px;
             display: flex;
-            align-items: flex-end;
+            align-items: flex-end; /* Align bars to bottom */
             justify-content: center;
-            padding: 20px;
-            gap: 5px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             position: relative;
         }
 
         .bar {
-            width: 30px;
+            width: 12px;
+            margin: 0 2px;
             background-color: var(--bar-default);
-            transition: height 0.2s ease, background-color 0.1s ease;
-            border-radius: 3px 3px 0 0;
-            position: relative;
+            border-radius: 2px 2px 0 0;
+            transition: height 0.1s ease, background-color 0.1s ease;
         }
 
-        .bar::after {
-            content: attr(data-value);
-            position: absolute;
-            top: -25px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 12px;
-            opacity: 0.8;
+        .status {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #555;
         }
-
-        /* Specific states */
-        .bar.pivot { background-color: var(--bar-pivot); }
-        .bar.compare { background-color: var(--bar-compare); }
-        .bar.swap { background-color: var(--bar-swap); }
-        .bar.sorted { background-color: var(--bar-done); }
-
     </style>
 </head>
 <body>
 
-    <h1>Quick Sort Algorithm</h1>
+    <h1>Quick Sort Visualization</h1>
 
     <div class="controls">
-        <button id="start-btn" onclick="startSorting()">Start / Next Step</button>
-        <button id="reset-btn" onclick="generateAndReset()">Generate New Array</button>
+        <button id="btnStart" class="btn-start">Sort Array</button>
+        <button id="btnReset" class="btn-reset">Reset / New Array</button>
         
-        <span style="align-self: center;">Speed:</span>
-        <input type="range" id="speed-range" min="100" max="2000" value="800" step="100">
-        <span class="status" id="status-text">Array is ready!</span>
+        <div class="speed-control">
+            <label for="speedRange">Speed:</label>
+            <input type="range" id="speedRange" min="10" max="300" value="100">
+            <span id="speedValue">100ms</span>
+        </div>
     </div>
 
-    <div class="container" id="visualization-container">
-        <!-- Bars will be injected here via JS -->
+    <div class="array-container" id="arrayContainer">
+        <!-- Bars will be injected here -->
     </div>
+
+    <div class="status" id="statusText">Ready to sort</div>
 
     <script>
-        let bars = []; // Array of DOM elements
-        const container = document.getElementById('visualization-container');
-        const statusText = document.getElementById('status-text');
-        const startBtn = document.getElementById('start-btn');
-        const speedRange = document.getElementById('speed-range');
+        /**
+         * Quick Sort Visualization Logic
+         * Uses async/await and requestAnimationFrame concepts (via browser paint cycle)
+         */
 
+        const container = document.getElementById('arrayContainer');
+        const statusText = document.getElementById('statusText');
+        const btnStart = document.getElementById('btnStart');
+        const btnReset = document.getElementById('btnReset');
+        const speedRange = document.getElementById('speedRange');
+        const speedValue = document.getElementById('speedValue');
+
+        // Configuration
+        const ARRAY_SIZE = 50;
+        let arrayData = [];
         let isSorting = false;
-        let delay = parseInt(speedRange.value);
 
-        // Sleep utility for animation
-        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        // Utility: Delay function to control animation speed
+        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        // Generate random array and reset UI
-        async function generateAndReset() {
-            if (isSorting) return; // Prevent generation while sorting
-            
-            isSorting = false;
-            startBtn.disabled = false;
-            statusText.textContent = "Generated a new random array.";
-            
-            const count = 20;
-            const maxVal = 100;
-            
-            // Create data and elements
-            bars = [];
+        // Update slider text
+        speedRange.addEventListener('input', (e) => {
+            speedValue.textContent = `${e.target.value}ms`;
+        });
+
+        // Generate random array
+        function generateArray() {
+            arrayData = [];
+            for (let i = 0; i < ARRAY_SIZE; i++) {
+                arrayData.push(Math.floor(Math.random() * 80) + 10); // Height between 10 and 90%
+            }
+            renderArray();
+        }
+
+        // Render the bars to DOM
+        function renderArray() {
             container.innerHTML = '';
-            
-            for (let i = 0; i < count; i++) {
-                const val = Math.floor(Math.random() * maxVal) + 1;
+            arrayData.forEach((height, index) => {
                 const bar = document.createElement('div');
                 bar.classList.add('bar');
-                bar.style.height = '0%'; // Start height 0 for animation effect later if needed, or use initial value
-                bar.setAttribute('data-value', val);
-                
+                bar.style.height = `${height}%`;
+                bar.id = `bar-${index}`;
                 container.appendChild(bar);
-                bars.push({ element: bar, value: val });
-            }
-
-            // Initial render heights
-            bars.forEach(b => {
-                b.element.style.height = `${(b.value / maxVal) * 100}%`;
             });
         }
 
-        async function startSorting() {
+        // Helper to get delay based on slider
+        async function getDelay() {
+            const speed = parseInt(speedRange.value);
+            return Math.max(10, 310 - speed); // Invert logic: higher value = faster sort (lower delay)
+        }
+
+        /**
+         * Partition Logic for Quick Sort
+         * @param {number} low 
+         * @param {number} high 
+         */
+        async function partition(low, high) {
+            const pivotIndex = high;
+            const pivotValue = arrayData[high];
+
+            // Highlight Pivot
+            await updateBarColor(pivotIndex, 'pivot');
+            
+            let i = low - 1;
+
+            for (let j = low; j < high; j++) {
+                // Check if element is smaller than pivot
+                if (arrayData[j] < pivotValue) {
+                    i++;
+                    
+                    // Swap if indices are different
+                    if (i !== j) {
+                        await swap(i, j);
+                    }
+                }
+            }
+
+            // Place pivot in correct position
+            await swap(i + 1, high);
+
+            return i + 1;
+        }
+
+        /**
+         * Quick Sort Recursive Function
+         */
+        async function quickSort(low, high) {
+            if (low < high) {
+                const pi = await partition(low, high);
+                
+                // Recursively sort elements before partition element
+                await quickSort(low, pi - 1);
+                
+                // Recursively sort elements after partition element
+                await quickSort(pi + 1, high);
+            }
+        }
+
+        /**
+         * Swap two elements and update UI
+         */
+        async function swap(i, j) {
+            if (i === j) return;
+
+            statusText.textContent = `Swapping index ${i} with index ${j}`;
+
+            // Visualize swap
+            const barI = document.getElementById(`bar-${i}`);
+            const barJ = document.getElementById(`bar-${j}`);
+            
+            // Mark as swapping (red)
+            await updateBarColor(i, 'swap');
+            await updateBarColor(j, 'swap');
+
+            // Perform actual swap in data
+            [arrayData[i], arrayData[j]] = [arrayData[j], arrayData[i]];
+
+            // Update heights
+            barI.style.height = `${arrayData[i]}%`;
+            barJ.style.height = `${arrayData[j]}%`;
+
+            // Reset colors after a brief moment (handled by next step or loop)
+            await delay(10); 
+        }
+
+        /**
+         * Update visual styles of a bar
+         */
+        async function updateBarColor(index, status) {
+            const bar = document.getElementById(`bar-${index}`);
+            
+            // Remove existing classes to reset
+            bar.classList.remove('sorted');
+            
+            if (status === 'pivot') {
+                bar.style.backgroundColor = 'var(--bar-pivot)';
+            } else if (status === 'swap') {
+                bar.style.backgroundColor = 'var(--bar-swap)';
+            } else {
+                // Default state is handled by CSS, but we need to ensure it's not sorted yet
+                bar.style.backgroundColor = ''; 
+            }
+
+            await delay(20); // Allow browser to render color change
+        }
+
+        /**
+         * Mark array as sorted (green)
+         */
+        async function markSorted() {
+            for(let i=0; i<arrayData.length; i++) {
+                const bar = document.getElementById(`bar-${i}`);
+                bar.style.backgroundColor = 'var(--bar-sorted)';
+                bar.classList.add('sorted');
+            }
+            statusText.textContent = "Sorting Complete!";
+        }
+
+        // Main Start Function
+        async function startSort() {
             if (isSorting) return;
             
             isSorting = true;
-            startBtn.disabled = true;
-            
-            // Calculate delay based on range slider (inverted logic: smaller value = faster)
-            // Slider min 100, max 2000. 
-            // Let's map it so visual feels right.
-            const speedFactor = document.getElementById('speed-range').value;
-            delay = 300 - speedFactor + 500; 
+            btnStart.disabled = true;
+            btnReset.disabled = true;
+            statusText.textContent = "Sorting...";
 
-            await quickSort(0, bars.length - 1);
+            await quickSort(0, arrayData.length - 1);
+            await markSorted();
 
             isSorting = false;
-            startBtn.disabled = false;
-            statusText.textContent = "Sorting Complete!";
-            
-            // Turn all remaining bars green (sorted state)
-            bars.forEach(b => b.element.classList.add('sorted'));
+            btnStart.disabled = false;
+            btnReset.disabled = false;
         }
 
-        // Highlight functions
-        function highlightPivot(index) {
-            if(bars[index]) bars[index].element.classList.add('pivot');
-        }
-
-        function clearHighlights() {
-            bars.forEach(b => b.element.classList.remove('pivot', 'compare', 'swap'));
-        }
-
-        function showCompare(index, val) {
-            if(bars[index]) {
-                bars[index].element.classList.add('compare');
-                bars[index].element.setAttribute('data-value', val);
-            }
-        }
-
-        function clearCompare() {
-            bars.forEach(b => b.element.classList.remove('compare'));
-        }
-
-        async function swap(index1, index2) {
-            if(!bars[index1] || !bars[index2]) return;
-
-            const tempVal = bars[index1].value;
-            bars[index1].value = bars[index2].value;
-            bars[index2].value = tempVal;
-
-            // Update DOM elements and text
-            const el1 = bars[index1].element;
-            const el2 = bars[index2].element;
-
-            // Text update
-            el1.setAttribute('data-value', bars[index1].value);
-            el2.setAttribute('data-value', bars[index2].value);
-            
-            // Swap heights visual effect
-            const h1 = parseFloat(el1.style.height || '0');
-            const h2 = parseFloat(el2.style.height || '0');
-
-            el1.style.height = `${(bars[index1].value / 100) * 100}%`;
-            el2.style.height = `${(bars[index2].value / 100) * 100}%`;
-
-            // Highlight swap
-            el1.classList.add('swap');
-            el2.classList.add('swap');
-
-            await sleep(delay); // Wait for visual
-
-            // Clear highlight
-            el1.classList.remove('swap');
-            el2.classList.remove('swap');
-        }
-
-        async function quickSort(start, end) {
-            if (start >= end) return;
-
-            // 1. Pick pivot (Randomized)
-            const pivotIndex = Math.floor(Math.random() * (end - start + 1)) + start;
-            
-            statusText.textContent = `Selecting a random pivot...`;
-            await sleep(delay);
-            
-            highlightPivot(pivotIndex);
-            statusText.textContent = "Pivot selected (Red).";
-            await sleep(delay);
-            clearHighlights();
-
-            // 2. Partition Logic (Lomuto Scheme variation)
-            // We will move the pivot to the end manually for easier logic visualization
-            
-            const pivotValue = bars[pivotIndex].value;
-            
-            statusText.textContent = "Partitioning array...";
-            await sleep(delay);
-
-            let storeIndex = start;
-
-            for (let i = start + 1; i <= end; i++) {
-                statusText.textContent = `Comparing ${bars[i].element.getAttribute('data-value')} with Pivot...`;
-                showCompare(i, bars[i].value);
-                
-                // Highlight current iterator
-                if(bars[i]) bars[i].element.classList.add('compare');
-
-                if (bars[i].value < pivotValue) {
-                    statusText.textContent = "Element smaller than pivot found. Swapping.";
-                    
-                    await swap(storeIndex, i);
-                    storeIndex++;
-                } else {
-                    // Visual feedback when not swapping but checking
-                    setTimeout(() => {
-                        if(bars[i]) bars[i].element.classList.remove('compare');
-                    }, 300);
-                }
-                
-                await sleep(delay);
-            }
-
-            // Move pivot to its final place (before storeIndex)
-            const tempPivot = bars[pivotIndex].value;
-            bars[pivotIndex].value = bars[storeIndex - 1].value;
-            bars[storeIndex - 1].value = tempPivot;
-            
-            // Update DOM for pivot swap
-            bars[pivotIndex].element.setAttribute('data-value', bars[storeIndex-1].value);
-            bars[storeIndex-1].element.setAttribute('data-value', tempPivot);
-
-            const elPivot = bars[pivotIndex].element;
-            const elStore = bars[storeIndex - 1].element;
-
-            // Visual swap pivot to spot
-            await swap(pivotIndex, storeIndex - 1);
-            
-            statusText.textContent = `Pivot placed correctly. Recursing left and right.`;
-            clearHighlights();
-            await sleep(delay);
-
-            // Recursive calls
-            if (start < storeIndex - 1) {
-                await quickSort(start, storeIndex - 2);
-            }
-            
-            if (storeIndex < end) {
-                await quickSort(storeIndex, end);
-            }
-
-            statusText.textContent = "Sub-array sorted.";
-        }
+        // Event Listeners
+        btnStart.addEventListener('click', startSort);
+        
+        btnReset.addEventListener('click', () => {
+            if (isSorting) return;
+            generateArray();
+            statusText.textContent = "Ready to sort";
+        });
 
         // Initialize
-        generateAndReset();
+        generateArray();
 
     </script>
 </body>
