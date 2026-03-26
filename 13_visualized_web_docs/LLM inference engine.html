@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM 추론 엔진 구조: Pre-fill, Decode & KV Cache</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .token-box {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 4px;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0.3;
+            transform: scale(0.9);
+            border: 2px solid transparent;
+        }
+        
+        .token-active {
+            opacity: 1;
+            transform: scale(1.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .token-prompt { background-color: #dbeafe; color: #1e3a8a; border-color: #bfdbfe; }
+        .token-gen { background-color: #dcfce7; color: #166534; border-color: #bbf7d0; }
+        
+        /* KV Cache Styles */
+        .kv-slot {
+            width: 48px;
+            height: 64px;
+            background-color: #f3f4f6;
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: #9ca3af;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .kv-slot.filled {
+            background-color: #fef3c7;
+            border: 2px solid #f59e0b;
+            color: #b45309;
+            box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+        }
+
+        .kv-slot.reading {
+            background-color: #fef08a;
+            border-color: #eab308;
+            box-shadow: 0 0 15px rgba(234, 179, 8, 0.6);
+            transform: translateY(-4px);
+        }
+
+        .llm-core {
+            transition: all 0.3s ease;
+        }
+        
+        .llm-computing {
+            background-color: #e0e7ff;
+            border-color: #6366f1;
+            box-shadow: 0 0 25px rgba(99, 102, 241, 0.5);
+            animation: pulse-ring 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(99, 102, 241, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
+
+        .arrow-path {
+            stroke-dasharray: 10;
+            animation: dash 1s linear infinite;
+        }
+
+        @keyframes dash {
+            to { stroke-dashoffset: -20; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen p-6">
+
+<div class="max-w-6xl mx-auto space-y-8">
+    <!-- Header -->
+    <header class="text-center space-y-4">
+        <h1 class="text-4xl font-extrabold text-indigo-900 tracking-tight">LLM 추론 엔진 작동 원리</h1>
+        <p class="text-lg text-slate-600">vLLM과 같은 최신 엔진이 텍스트를 생성하는 두 가지 핵심 단계와 메모리 관리 기법</p>
+    </header>
+
+    <!-- Interactive Simulation Area -->
+    <section class="bg-white p-8 rounded-3xl shadow-xl border border-slate-200">
+        <!-- Controls -->
+        <div class="flex flex-wrap justify-center gap-4 mb-8">
+            <button id="btn-prefill" onclick="runPrefill()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-blue-200">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                1. Pre-fill 단계 실행
+            </button>
+            <button id="btn-decode" onclick="runDecode()" disabled class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                2. Decode 단계 (한 단어씩)
+            </button>
+            <button onclick="resetSim()" class="px-6 py-3 bg-slate-500 hover:bg-slate-600 text-white rounded-xl font-bold transition">초기화</button>
+        </div>
+
+        <!-- Simulation Canvas -->
+        <div class="relative flex flex-col items-center gap-8">
+            
+            <!-- Input Prompt -->
+            <div class="w-full text-center">
+                <h3 class="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">입력 프롬프트 (Prompt)</h3>
+                <div id="prompt-container" class="flex flex-wrap justify-center min-h-[50px]">
+                    <!-- Tokens will be injected by JS -->
+                </div>
+            </div>
+
+            <!-- SVG Arrows Down -->
+            <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path id="arrow-down" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" class=""></path></svg>
+
+            <!-- LLM Engine Core -->
+            <div id="llm-core" class="llm-core w-full max-w-2xl border-4 border-slate-300 rounded-2xl p-6 bg-slate-50 relative">
+                <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-4 py-1 rounded-full text-sm font-bold shadow-md">
+                    LLM 연산 코어 (GPU)
+                </div>
+                
+                <div class="flex flex-col md:flex-row gap-6 items-center justify-between">
+                    <!-- Model Weights -->
+                    <div class="flex-1 bg-white border-2 border-slate-200 p-4 rounded-xl text-center shadow-sm">
+                        <svg class="mx-auto mb-2 w-8 h-8 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+                        <h4 class="font-bold text-slate-700">신경망 모델</h4>
+                        <p id="compute-status" class="text-xs text-slate-500 mt-1">대기 중...</p>
+                    </div>
+
+                    <!-- KV Cache Memory -->
+                    <div class="flex-[2] bg-white border-2 border-amber-200 p-4 rounded-xl shadow-sm relative">
+                        <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white px-3 py-0.5 rounded-full text-xs font-bold shadow-sm">
+                            KV Cache (GPU VRAM)
+                        </div>
+                        <p class="text-[10px] text-slate-500 text-center mb-2">과거 계산 값(Key, Value)을 저장하여 중복 연산 방지</p>
+                        <div id="kv-cache-container" class="flex flex-wrap justify-center gap-2">
+                            <!-- KV Slots injected by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SVG Arrows Down -->
+            <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path id="arrow-down-2" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" class=""></path></svg>
+
+            <!-- Output Generated -->
+            <div class="w-full text-center">
+                <h3 class="text-sm font-bold text-green-700 uppercase tracking-widest mb-2">생성된 텍스트 (Generated)</h3>
+                <div id="output-container" class="flex flex-wrap justify-center min-h-[50px] p-4 bg-green-50 rounded-xl border border-green-200">
+                    <!-- Gen Tokens will be injected by JS -->
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Explanation Cards -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div id="card-prefill" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 transition-all duration-300 opacity-50">
+            <h3 class="text-xl font-bold text-blue-700 flex items-center gap-2 mb-3">
+                <span class="bg-blue-100 text-blue-800 w-8 h-8 rounded-full flex items-center justify-center text-sm">1</span>
+                Pre-fill (프리필) 단계
+            </h3>
+            <p class="text-slate-600 text-sm leading-relaxed mb-3">
+                사용자가 입력한 <strong>프롬프트 전체를 한꺼번에 읽어 들이는 과정</strong>입니다.
+            </p>
+            <ul class="text-sm text-slate-600 list-disc pl-5 space-y-1">
+                <li><strong>병렬 처리:</strong> 모든 단어를 동시에 계산하여 GPU 연산력(Compute)을 100% 활용합니다.</li>
+                <li><strong>KV 캐시 생성:</strong> 연산 결과인 Key와 Value 텐서를 KV Cache 메모리에 한 번에 저장합니다.</li>
+            </ul>
+        </div>
+
+        <div id="card-decode" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 transition-all duration-300 opacity-50">
+            <h3 class="text-xl font-bold text-green-700 flex items-center gap-2 mb-3">
+                <span class="bg-green-100 text-green-800 w-8 h-8 rounded-full flex items-center justify-center text-sm">2</span>
+                Decode (디코드) 단계
+            </h3>
+            <p class="text-slate-600 text-sm leading-relaxed mb-3">
+                LLM이 <strong>다음 단어를 하나씩 순차적으로 만들어내는 과정</strong>입니다.
+            </p>
+            <ul class="text-sm text-slate-600 list-disc pl-5 space-y-1">
+                <li><strong>순차적 병목:</strong> 이전 단어가 생성되어야 다음 단어를 만들 수 있습니다.</li>
+                <li><strong>메모리 대역폭 중요:</strong> 연산량은 적지만 매번 메모리(KV 캐시)를 읽어야 해서 메모리 속도가 가장 중요합니다.</li>
+            </ul>
+        </div>
+
+        <div class="bg-slate-800 text-white p-6 rounded-2xl shadow-sm border border-slate-700 relative overflow-hidden">
+            <div class="absolute -right-4 -top-4 w-24 h-24 bg-amber-500 rounded-full opacity-20 blur-2xl"></div>
+            <h3 class="text-xl font-bold text-amber-400 mb-3">💡 vLLM의 핵심 혁신</h3>
+            <h4 class="font-semibold text-lg mb-2">PagedAttention 이란?</h4>
+            <p class="text-slate-300 text-sm leading-relaxed">
+                일반적인 엔진은 단어가 얼마나 생성될지 몰라 KV 캐시 메모리를 통째로(크게) 미리 할당하여 <strong>메모리 낭비(단편화)</strong>가 심했습니다.
+            </p>
+            <p class="text-slate-300 text-sm leading-relaxed mt-2">
+                <strong>vLLM</strong>은 OS의 가상 메모리처럼 KV 캐시를 작은 <strong>'블록(Page)' 단위로 쪼개어</strong> 필요할 때마다 동적으로 할당합니다. 이로 인해 메모리 낭비를 없애고, 한 번에 더 많은 사용자의 요청(Batch)을 처리해 속도를 극대화합니다!
+            </p>
+        </div>
+    </section>
+</div>
+
+<script>
+    // Configuration
+    const promptTokens = ["인공지능", "엔진", "vLLM의", "구조를", "알려줘."];
+    const genTokens = ["네,", "알려", "드리겠", "습니다!", "😊"];
+    
+    let currentState = 0; // 0: init, 1: prefill done, >1: decode steps
+    let decodeStep = 0;
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    function initUI() {
+        const pContainer = document.getElementById('prompt-container');
+        const kContainer = document.getElementById('kv-cache-container');
+        const oContainer = document.getElementById('output-container');
+        
+        pContainer.innerHTML = '';
+        kContainer.innerHTML = '';
+        oContainer.innerHTML = '';
+
+        // Init Prompt Tokens
+        promptTokens.forEach((t, i) => {
+            const el = document.createElement('div');
+            el.className = 'token-box token-prompt';
+            el.id = `pt-${i}`;
+            el.innerText = t;
+            pContainer.appendChild(el);
+        });
+
+        // Init KV Slots (Prompt size + Gen size)
+        const totalSlots = promptTokens.length + genTokens.length;
+        for(let i=0; i<totalSlots; i++) {
+            const el = document.createElement('div');
+            el.className = 'kv-slot';
+            el.id = `kv-${i}`;
+            el.innerHTML = `Slot<br>${i+1}`;
+            kContainer.appendChild(el);
+        }
+
+        // Setup Gen Tokens (Hidden initially)
+        genTokens.forEach((t, i) => {
+            const el = document.createElement('div');
+            el.className = 'token-box token-gen hidden';
+            el.id = `gt-${i}`;
+            el.innerText = t;
+            oContainer.appendChild(el);
+        });
+    }
+
+    async function runPrefill() {
+        if(currentState !== 0) return;
+        document.getElementById('btn-prefill').disabled = true;
+        
+        const core = document.getElementById('llm-core');
+        const status = document.getElementById('compute-status');
+        const pCard = document.getElementById('card-prefill');
+        
+        pCard.classList.remove('opacity-50');
+        pCard.classList.add('ring-2', 'ring-blue-400');
+
+        // 1. Highlight all prompt tokens (Parallel)
+        promptTokens.forEach((_, i) => {
+            document.getElementById(`pt-${i}`).classList.add('token-active');
+        });
+        
+        document.getElementById('arrow-down').classList.add('arrow-path', 'text-blue-500');
+
+        await sleep(600);
+        
+        // 2. Compute in LLM
+        core.classList.add('llm-computing');
+        status.innerText = "병렬 연산 중 (행렬 곱)...";
+        status.classList.add('text-indigo-600', 'font-bold');
+        
+        await sleep(1000);
+
+        // 3. Fill KV Cache for prompt tokens all at once
+        promptTokens.forEach((_, i) => {
+            const kv = document.getElementById(`kv-${i}`);
+            kv.classList.add('filled');
+            kv.innerHTML = `K,V<br>#${i+1}`;
+        });
+        
+        await sleep(800);
+
+        // 4. Generate first token
+        core.classList.remove('llm-computing');
+        status.innerText = "프리필 완료. 첫 단어 생성됨.";
+        status.classList.remove('text-indigo-600');
+        
+        document.getElementById('arrow-down-2').classList.add('arrow-path', 'text-green-500');
+        
+        const firstGen = document.getElementById(`gt-0`);
+        firstGen.classList.remove('hidden');
+        firstGen.classList.add('token-active');
+
+        // Fill KV for first gen token
+        const kvFirstGen = document.getElementById(`kv-${promptTokens.length}`);
+        kvFirstGen.classList.add('filled');
+        kvFirstGen.innerHTML = `K,V<br>#${promptTokens.length+1}`;
+
+        document.getElementById('arrow-down').classList.remove('arrow-path', 'text-blue-500');
+        
+        currentState = 1;
+        decodeStep = 1;
+        document.getElementById('btn-decode').disabled = false;
+        
+        await sleep(1000);
+        firstGen.classList.remove('token-active');
+    }
+
+    async function runDecode() {
+        if(currentState < 1 || decodeStep >= genTokens.length) return;
+        
+        const btnDecode = document.getElementById('btn-decode');
+        btnDecode.disabled = true;
+
+        const core = document.getElementById('llm-core');
+        const status = document.getElementById('compute-status');
+        const dCard = document.getElementById('card-decode');
+        
+        // Reset Prefill card highlight
+        document.getElementById('card-prefill').classList.remove('ring-2', 'ring-blue-400');
+        dCard.classList.remove('opacity-50');
+        dCard.classList.add('ring-2', 'ring-green-400');
+
+        // Highlight previous output token as new input
+        const prevToken = document.getElementById(`gt-${decodeStep-1}`);
+        prevToken.classList.add('token-active', 'ring-2', 'ring-indigo-400');
+        
+        status.innerText = `"${genTokens[decodeStep-1]}" 입력 접수됨...`;
+        await sleep(600);
+
+        // Compute Phase
+        core.classList.add('llm-computing');
+        status.innerText = "순차 연산 및 KV 캐시 읽는 중...";
+        
+        // Highlight existing KV caches (Reading)
+        const totalFilledSoFar = promptTokens.length + decodeStep;
+        for(let i=0; i<totalFilledSoFar; i++) {
+            document.getElementById(`kv-${i}`).classList.add('reading');
+        }
+
+        await sleep(800);
+
+        // Remove reading highlight
+        for(let i=0; i<totalFilledSoFar; i++) {
+            document.getElementById(`kv-${i}`).classList.remove('reading');
+        }
+
+        // Compute new KV and add to cache
+        const newKvIndex = promptTokens.length + decodeStep;
+        const newKv = document.getElementById(`kv-${newKvIndex}`);
+        newKv.classList.add('filled');
+        newKv.innerHTML = `K,V<br>#${newKvIndex+1}`;
+        
+        // Generate Next Token
+        prevToken.classList.remove('token-active', 'ring-2', 'ring-indigo-400');
+        
+        const nextToken = document.getElementById(`gt-${decodeStep}`);
+        nextToken.classList.remove('hidden');
+        nextToken.classList.add('token-active');
+
+        core.classList.remove('llm-computing');
+        status.innerText = "새 토큰 생성 완료.";
+        
+        await sleep(600);
+        nextToken.classList.remove('token-active');
+        
+        decodeStep++;
+        
+        if(decodeStep < genTokens.length) {
+            btnDecode.disabled = false;
+        } else {
+            status.innerText = "생성 완료! (EOS 도달)";
+            document.getElementById('arrow-down-2').classList.remove('arrow-path', 'text-green-500');
+        }
+    }
+
+    function resetSim() {
+        currentState = 0;
+        decodeStep = 0;
+        document.getElementById('btn-prefill').disabled = false;
+        document.getElementById('btn-decode').disabled = true;
+        document.getElementById('arrow-down').classList.remove('arrow-path', 'text-blue-500');
+        document.getElementById('arrow-down-2').classList.remove('arrow-path', 'text-green-500');
+        document.getElementById('compute-status').innerText = '대기 중...';
+        
+        document.getElementById('card-prefill').classList.add('opacity-50');
+        document.getElementById('card-prefill').classList.remove('ring-2', 'ring-blue-400');
+        document.getElementById('card-decode').classList.add('opacity-50');
+        document.getElementById('card-decode').classList.remove('ring-2', 'ring-green-400');
+        
+        initUI();
+    }
+
+    // Initialize on load
+    window.onload = initUI;
+</script>
+</body>
+</html>

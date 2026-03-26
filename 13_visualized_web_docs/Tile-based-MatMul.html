@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPU 타일링 기법 시각화: 왜 cuTile MatMul이 빠를까?</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      .matrix-grid {
+        display: grid;
+        gap: 2px;
+        background-color: #e5e7eb;
+        padding: 4px;
+        border-radius: 8px;
+      }
+      .cell {
+        width: 24px;
+        height: 24px;
+        background-color: white;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: #9ca3af;
+        transition: all 0.2s ease;
+      }
+      .cell.global-read {
+        background-color: #fca5a5;
+        color: white;
+        transform: scale(1.1);
+        box-shadow: 0 0 5px red;
+      }
+      .cell.shared-read {
+        background-color: #86efac;
+        color: #064e3b;
+        transform: scale(1.1);
+      }
+      .cell.computing {
+        background-color: #fef08a;
+        color: #854d0e;
+        font-weight: bold;
+      }
+      .cell.done {
+        background-color: #3b82f6;
+        color: white;
+      }
+
+      /* Shared Memory Cache Box */
+      .cache-box {
+        border: 2px dashed #10b981;
+        background-color: #ecfdf5;
+        border-radius: 8px;
+        padding: 10px;
+        min-height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        transition: all 0.3s ease;
+      }
+      .cache-active {
+        background-color: #d1fae5;
+        box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 text-gray-800 font-sans p-6">
+    <div class="max-w-6xl mx-auto space-y-8">
+      <!-- Header -->
+      <header class="text-center space-y-4">
+        <h1 class="text-4xl font-extrabold text-blue-900">
+          NVIDIA cuTile & GPU 타일링 시각화
+        </h1>
+        <p class="text-lg text-gray-600">
+          RTX 4060과 같은 최신 GPU에서 행렬 곱셈(MatMul)이 압도적으로 빠른 이유:
+          <strong>메모리 계층과 타일(Tile)의 마법</strong>
+        </p>
+      </header>
+
+      <!-- Main Visualizer -->
+      <section
+        class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200"
+      >
+        <div
+          class="flex flex-col md:flex-row justify-between items-center mb-6"
+        >
+          <h2 class="text-2xl font-bold text-gray-800">
+            시뮬레이션: 8x8 행렬 곱셈 (A × B = C)
+          </h2>
+          <div class="space-x-2 mt-4 md:mt-0">
+            <button
+              onclick="runNaive()"
+              class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition"
+            >
+              1. 일반 방식 (느림)
+            </button>
+            <button
+              onclick="runTiled()"
+              class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition"
+            >
+              2. 타일링 방식 (빠름)
+            </button>
+            <button
+              onclick="resetSimulation()"
+              class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition"
+            >
+              초기화
+            </button>
+          </div>
+        </div>
+
+        <div
+          class="flex flex-col lg:flex-row items-center justify-center gap-8"
+        >
+          <!-- Matrix A -->
+          <div class="text-center">
+            <h3 class="font-bold mb-2">Matrix A</h3>
+            <div
+              id="matrix-a"
+              class="matrix-grid"
+              style="grid-template-columns: repeat(8, 1fr)"
+            ></div>
+          </div>
+
+          <div class="text-2xl font-bold text-gray-400">×</div>
+
+          <!-- Matrix B -->
+          <div class="text-center">
+            <h3 class="font-bold mb-2">Matrix B</h3>
+            <div
+              id="matrix-b"
+              class="matrix-grid"
+              style="grid-template-columns: repeat(8, 1fr)"
+            ></div>
+          </div>
+
+          <div class="text-2xl font-bold text-gray-400">=</div>
+
+          <!-- Matrix C -->
+          <div class="text-center">
+            <h3 class="font-bold mb-2">Matrix C (결과)</h3>
+            <div
+              id="matrix-c"
+              class="matrix-grid"
+              style="grid-template-columns: repeat(8, 1fr)"
+            ></div>
+          </div>
+        </div>
+
+        <!-- Animation Dashboard -->
+        <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div
+            class="bg-red-50 p-4 rounded-xl border border-red-200 text-center"
+          >
+            <h4 class="text-sm font-bold text-red-800 uppercase">
+              글로벌 메모리 읽기 (VRAM)
+            </h4>
+            <p class="text-xs text-red-600 mb-2">
+              매우 느림 (수백 사이클 지연)
+            </p>
+            <div
+              class="text-4xl font-black text-red-600 font-mono"
+              id="global-reads"
+            >
+              0
+            </div>
+          </div>
+
+          <div class="cache-box" id="shared-memory-box">
+            <h4 class="text-sm font-bold text-green-800 uppercase mb-1">
+              공유 메모리 (Shared Memory)
+            </h4>
+            <p class="text-xs text-green-700 text-center">
+              칩 내부 캐시, 매우 빠름<br /><span
+                id="cache-status"
+                class="font-bold"
+                >비어있음</span
+              >
+            </p>
+          </div>
+
+          <div
+            class="bg-green-50 p-4 rounded-xl border border-green-200 text-center"
+          >
+            <h4 class="text-sm font-bold text-green-800 uppercase">
+              공유 메모리 읽기 (SRAM)
+            </h4>
+            <p class="text-xs text-green-600 mb-2">
+              매우 빠름 (수 사이클 내 접근)
+            </p>
+            <div
+              class="text-4xl font-black text-green-600 font-mono"
+              id="shared-reads"
+            >
+              0
+            </div>
+          </div>
+        </div>
+
+        <p id="sim-status" class="text-center mt-4 font-bold text-blue-600 h-6">
+          버튼을 눌러 시뮬레이션을 시작하세요.
+        </p>
+      </section>
+
+      <!-- Explanation Section -->
+      <section class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div
+          class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4"
+        >
+          <h3
+            class="text-xl font-bold text-gray-800 border-b pb-2 flex items-center gap-2"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="text-blue-500"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4" />
+              <path d="M12 8h.01" />
+            </svg>
+            원리 설명: 공유 메모리란?
+          </h3>
+          <p class="text-gray-700 leading-relaxed">
+            GPU에서 행렬 연산을 할 때 가장 큰 병목은
+            <strong>'계산 속도'가 아니라 '데이터를 가져오는 속도'</strong
+            >입니다. GPU의 메인 메모리(VRAM, 글로벌 메모리)는 용량이 크지만
+            속도가 느립니다.
+          </p>
+          <ul class="list-disc pl-5 text-gray-700 space-y-2">
+            <li>
+              <strong>일반 방식 (Naive):</strong> 결과 행렬의 각 칸을 계산할
+              때마다 VRAM에서 전체 행과 열을 계속 다시 읽어옵니다. 엄청난 트래픽
+              낭비가 발생합니다.
+            </li>
+            <li>
+              <strong>타일링 방식 (Tiling):</strong> 행렬을 작은 블록(타일)으로
+              잘라, 칩 내부에 있는 아주 빠르고 작은 창고인
+              <strong>'공유 메모리(Shared Memory)'</strong>에 한 번만 가져다
+              놓습니다. 그리고 그 안에서 여러 번 재사용하여 계산을 끝냅니다.
+              VRAM 접근 횟수가 기적적으로 줄어듭니다!
+            </li>
+          </ul>
+        </div>
+
+        <div
+          class="bg-slate-800 text-white p-6 rounded-2xl shadow-sm space-y-4"
+        >
+          <h3
+            class="text-xl font-bold border-b border-slate-600 pb-2 flex items-center gap-2"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="text-green-400"
+            >
+              <path d="M2 20h.01" />
+              <path d="M7 20v-4" />
+              <path d="M12 20v-8" />
+              <path d="M17 20V8" />
+              <path d="M22 4v16" />
+            </svg>
+            RTX 4060 예상 성능 계산
+          </h3>
+          <p class="text-slate-300 text-sm">
+            크기가 N=4096인 행렬 A와 B를 곱할 때 (4096 × 4096):
+          </p>
+
+          <div
+            class="bg-slate-900 p-3 rounded-lg border border-slate-700 text-sm"
+          >
+            <div class="text-red-400 font-bold mb-1">[타일링 미적용 시]</div>
+            메모리 읽기 횟수: $2N^3$ = 약
+            <span class="text-white font-mono text-lg">137,438,953,472</span> 회
+            (137 Billion)<br />
+            결과: 대역폭(272GB/s) 한계에 부딪혀 연산기가 놀게 됨 (Memory Bound)
+          </div>
+
+          <div
+            class="bg-slate-900 p-3 rounded-lg border border-slate-700 text-sm mt-2"
+          >
+            <div class="text-green-400 font-bold mb-1">
+              [32x32 타일링 적용 시]
+            </div>
+            메모리 읽기 횟수: $2N^3 / 32$ = 약
+            <span class="text-white font-mono text-lg">4,294,967,296</span> 회
+            (4.2 Billion)<br />
+            결과: VRAM 접근이 <strong>1/32로 감소</strong>하여 GPU의 15 TFLOPS
+            연산력을 100% 가동 가능.
+          </div>
+          <p class="text-xs text-slate-400 mt-2">
+            💡 <strong>cuTile Python DSL의 장점:</strong> C++ CUDA 코드를 길고
+            복잡하게 짤 필요 없이, Python 문법만으로 위와 같은 메모리 타일링
+            최적화를 에이전트처럼 자동으로 설계하고 실행할 수 있게 해줍니다.
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const SIZE = 8;
+      const TILE_SIZE = 4;
+      let globalReads = 0;
+      let sharedReads = 0;
+      let isRunning = false;
+      let abortController = new AbortController();
+
+      function initGrids() {
+        ["matrix-a", "matrix-b", "matrix-c"].forEach((id) => {
+          const container = document.getElementById(id);
+          container.innerHTML = "";
+          for (let i = 0; i < SIZE * SIZE; i++) {
+            const cell = document.createElement("div");
+            cell.className = "cell";
+            cell.id = `${id}-cell-${i}`;
+            container.appendChild(cell);
+          }
+        });
+        updateCounters();
+      }
+
+      function updateCounters() {
+        document.getElementById("global-reads").innerText = globalReads;
+        document.getElementById("shared-reads").innerText = sharedReads;
+      }
+
+      function setStatus(text, isError = false) {
+        const el = document.getElementById("sim-status");
+        el.innerText = text;
+        el.className = `text-center mt-4 font-bold h-6 ${isError ? "text-red-600" : "text-blue-600"}`;
+      }
+
+      const sleep = (ms, signal) =>
+        new Promise((resolve, reject) => {
+          const timeout = setTimeout(resolve, ms);
+          if (signal)
+            signal.addEventListener("abort", () => {
+              clearTimeout(timeout);
+              reject(new Error("Aborted"));
+            });
+        });
+
+      function getIndex(row, col) {
+        return row * SIZE + col;
+      }
+
+      function resetSimulation() {
+        if (isRunning) abortController.abort();
+        isRunning = false;
+        abortController = new AbortController();
+        globalReads = 0;
+        sharedReads = 0;
+        initGrids();
+        document
+          .getElementById("shared-memory-box")
+          .classList.remove("cache-active");
+        document.getElementById("cache-status").innerText = "비어있음";
+        setStatus("시뮬레이션 초기화됨. 버튼을 눌러 시작하세요.");
+      }
+
+      async function highlightCell(
+        matrixId,
+        row,
+        col,
+        type,
+        duration = 100,
+        signal,
+      ) {
+        const cell = document.getElementById(
+          `${matrixId}-cell-${getIndex(row, col)}`,
+        );
+        if (!cell) return;
+        cell.classList.add(type);
+        if (duration > 0) {
+          await sleep(duration, signal);
+          cell.classList.remove(type);
+        }
+      }
+
+      async function runNaive() {
+        resetSimulation();
+        isRunning = true;
+        setStatus("진행중: 일반 방식 (매번 VRAM에서 행/열 전체를 읽어옴)");
+        const signal = abortController.signal;
+
+        try {
+          for (let r = 0; r < SIZE; r++) {
+            for (let c = 0; c < SIZE; c++) {
+              const cCell = document.getElementById(
+                `matrix-c-cell-${getIndex(r, c)}`,
+              );
+              cCell.classList.add("computing");
+
+              for (let k = 0; k < SIZE; k++) {
+                // 애니메이션 병렬 처리
+                highlightCell("matrix-a", r, k, "global-read", 50, signal);
+                highlightCell("matrix-b", k, c, "global-read", 50, signal);
+                globalReads += 2; // A에서 하나, B에서 하나
+                updateCounters();
+                await sleep(50, signal);
+              }
+              cCell.classList.remove("computing");
+              cCell.classList.add("done");
+            }
+          }
+          setStatus("완료: 엄청난 양의 글로벌 메모리(VRAM) 접근 발생!");
+        } catch (e) {
+          if (e.message !== "Aborted") console.error(e);
+        } finally {
+          isRunning = false;
+        }
+      }
+
+      async function runTiled() {
+        resetSimulation();
+        isRunning = true;
+        setStatus(
+          "진행중: 타일링 방식 (VRAM에서 타일을 한 번만 읽어 공유 메모리에 저장)",
+        );
+        const signal = abortController.signal;
+        const cacheBox = document.getElementById("shared-memory-box");
+        const cacheStatus = document.getElementById("cache-status");
+
+        try {
+          // Iterate over tiles in C
+          for (let tr = 0; tr < SIZE; tr += TILE_SIZE) {
+            for (let tc = 0; tc < SIZE; tc += TILE_SIZE) {
+              // Iterate over tiles in A and B required for C tile
+              for (let tk = 0; tk < SIZE; tk += TILE_SIZE) {
+                setStatus(
+                  `VRAM에서 타일 크기(${TILE_SIZE}x${TILE_SIZE})만큼 읽어 공유 메모리로 복사 중...`,
+                );
+                cacheBox.classList.add("cache-active");
+                cacheStatus.innerText = "타일 로딩 중...";
+
+                // 1. Load Tile from Global to Shared
+                for (let i = 0; i < TILE_SIZE; i++) {
+                  for (let j = 0; j < TILE_SIZE; j++) {
+                    highlightCell(
+                      "matrix-a",
+                      tr + i,
+                      tk + j,
+                      "global-read",
+                      50,
+                      signal,
+                    );
+                    highlightCell(
+                      "matrix-b",
+                      tk + i,
+                      tc + j,
+                      "global-read",
+                      50,
+                      signal,
+                    );
+                    globalReads += 2;
+                  }
+                }
+                updateCounters();
+                await sleep(300, signal); // 타일 로딩 완료 시각적 대기
+
+                setStatus(`공유 메모리(SRAM)의 데이터를 재사용하여 연산 중!`);
+                cacheStatus.innerText = "데이터 재사용 연산 중";
+
+                // 2. Compute using Shared Memory (Fast)
+                for (let i = 0; i < TILE_SIZE; i++) {
+                  for (let j = 0; j < TILE_SIZE; j++) {
+                    const cCell = document.getElementById(
+                      `matrix-c-cell-${getIndex(tr + i, tc + j)}`,
+                    );
+                    cCell.classList.add("computing");
+
+                    for (let k = 0; k < TILE_SIZE; k++) {
+                      // 글로벌 리드가 아닌 쉐어드 리드 이펙트
+                      highlightCell(
+                        "matrix-a",
+                        tr + i,
+                        tk + k,
+                        "shared-read",
+                        20,
+                        signal,
+                      );
+                      highlightCell(
+                        "matrix-b",
+                        tk + k,
+                        tc + j,
+                        "shared-read",
+                        20,
+                        signal,
+                      );
+                      sharedReads += 2;
+                      updateCounters();
+                      await sleep(20, signal);
+                    }
+                    cCell.classList.remove("computing");
+                    cCell.classList.add("done");
+                  }
+                }
+                cacheBox.classList.remove("cache-active");
+              }
+            }
+          }
+          cacheStatus.innerText = "완료됨";
+          setStatus(
+            "완료: VRAM 접근(빨간색)이 확연히 줄고 연산 속도가 극대화되었습니다!",
+          );
+        } catch (e) {
+          if (e.message !== "Aborted") console.error(e);
+        } finally {
+          isRunning = false;
+        }
+      }
+
+      // Initialize on load
+      window.onload = initGrids;
+    </script>
+  </body>
+</html>

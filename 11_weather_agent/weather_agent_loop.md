@@ -80,3 +80,6 @@ run_weather_agent()
 3.  **피드백(Action)**: 분석된 결과를 바탕으로 맞춤형 코칭 가이드를 생성합니다.
 
 Anthropic 호환 레이어를 사용하면 이러한 복잡한 '사고 루프'를 로컬에서도 안정적으로 구현할 수 있습니다.
+
+
+실제 OpenWeatherMap API를 호출하는 함수(get_real_weather)를 추가해 두었습니다. 나중에 API 키를 발급받으신 후 이 함수를 기존 get_weather 대신 호출하도록 직접 수정하시면 됩니다.

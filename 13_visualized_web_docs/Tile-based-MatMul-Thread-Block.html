@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPU 타일링 기법 시각화: 왜 cuTile MatMul이 빠를까?</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      .matrix-grid {
+        display: grid;
+        gap: 2px;
+        background-color: #d1d5db;
+        padding: 4px;
+        border-radius: 8px;
+        position: relative;
+      }
+      .cell {
+        width: 28px;
+        height: 28px;
+        background-color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: #9ca3af;
+        transition: all 0.2s ease;
+        box-sizing: border-box;
+      }
+
+      /* 2x2 Tile Boundaries (4x4 cells each) */
+      .tile-border-right {
+        border-right: 3px solid #4b5563;
+      }
+      .tile-border-bottom {
+        border-bottom: 3px solid #4b5563;
+      }
+
+      /* Animation States */
+      .cell.global-read {
+        background-color: #fca5a5;
+        color: white;
+        transform: scale(1.05);
+        box-shadow: inset 0 0 5px red;
+        z-index: 10;
+      }
+      .cell.shared-read {
+        background-color: #86efac;
+        color: #064e3b;
+        transform: scale(1.05);
+        z-index: 10;
+      }
+      .cell.computing {
+        background-color: #fef08a;
+        color: #854d0e;
+        font-weight: bold;
+      }
+      .cell.done {
+        background-color: #3b82f6;
+        color: white;
+      }
+
+      /* Tile Highlight Outline */
+      .active-tile-outline {
+        position: absolute;
+        border: 4px solid;
+        box-sizing: border-box;
+        pointer-events: none;
+        transition: all 0.3s ease;
+        z-index: 20;
+        display: none;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+      }
+
+      /* Shared Memory Cache Box */
+      .cache-box {
+        border: 2px dashed #10b981;
+        background-color: #ecfdf5;
+        border-radius: 8px;
+        padding: 10px;
+        min-height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        transition: all 0.3s ease;
+      }
+      .cache-active {
+        background-color: #d1fae5;
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
+        border: 4px solid #10b981;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 text-gray-800 font-sans p-6">
+    <div class="max-w-6xl mx-auto space-y-8">
+      <!-- Header -->
+      <header class="text-center space-y-4">
+        <h1 class="text-4xl font-extrabold text-blue-900">
+          NVIDIA cuTile & GPU 타일링 시각화
+        </h1>
+        <p class="text-lg text-gray-600">
+          RTX 4060과 같은 최신 GPU에서 행렬 곱셈(MatMul)이 압도적으로 빠른 이유:
+          <strong>타일 단위 병렬 처리와 공유 메모리</strong>
+        </p>
+      </header>
+
+      <!-- Main Visualizer -->
+      <section
+        class="bg-white p-6 rounded-2xl shadow-lg border border-gray-200"
+      >
+        <div
+          class="flex flex-col md:flex-row justify-between items-center mb-6"
+        >
+          <h2 class="text-2xl font-bold text-gray-800">
+            시뮬레이션: 8x8 행렬 곱셈 (A × B = C)
+          </h2>
+          <div class="space-x-2 mt-4 md:mt-0">
+            <button
+              onclick="runNaive()"
+              class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition"
+            >
+              1. 일반 방식 (순차 연산)
+            </button>
+            <button
+              onclick="runTiled()"
+              class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition shadow-md shadow-green-300"
+            >
+              2. 타일링 방식 (블록 병렬 연산)
+            </button>
+            <button
+              onclick="resetSimulation()"
+              class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition"
+            >
+              초기화
+            </button>
+          </div>
+        </div>
+
+        <div
+          class="flex flex-col lg:flex-row items-center justify-center gap-8 relative"
+        >
+          <!-- Matrix A -->
+          <div class="text-center relative">
+            <h3 class="font-bold mb-2">Matrix A</h3>
+            <div
+              id="matrix-a"
+              class="matrix-grid"
+              style="grid-template-columns: repeat(8, 1fr)"
+            ></div>
+            <div
+              id="outline-a"
+              class="active-tile-outline"
+              style="border-color: #ef4444"
+            ></div>
+          </div>
+
+          <div class="text-2xl font-bold text-gray-400">×</div>
+
+          <!-- Matrix B -->
+          <div class="text-center relative">
+            <h3 class="font-bold mb-2">Matrix B</h3>
+            <div
+              id="matrix-b"
+              class="matrix-grid"
+              style="grid-template-columns: repeat(8, 1fr)"
+            ></div>
+            <div
+              id="outline-b"
+              class="active-tile-outline"
+              style="border-color: #ef4444"
+            ></div>
+          </div>
+
+          <div class="text-2xl font-bold text-gray-400">=</div>
+
+          <!-- Matrix C -->
+          <div class="text-center relative">
+            <h3 class="font-bold mb-2 text-blue-700">Matrix C (결과 타일)</h3>
+            <div
+              id="matrix-c"
+              class="matrix-grid"
+              style="grid-template-columns: repeat(8, 1fr)"
+            ></div>
+            <div
+              id="outline-c"
+              class="active-tile-outline"
+              style="border-color: #3b82f6"
+            ></div>
+          </div>
+        </div>
+
+        <!-- Animation Dashboard -->
+        <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div
+            class="bg-red-50 p-4 rounded-xl border border-red-200 text-center"
+          >
+            <h4 class="text-sm font-bold text-red-800 uppercase">
+              글로벌 메모리 읽기 (VRAM)
+            </h4>
+            <p class="text-xs text-red-600 mb-2">
+              매우 느림 (블록 전체 로딩 시 증가)
+            </p>
+            <div
+              class="text-4xl font-black text-red-600 font-mono"
+              id="global-reads"
+            >
+              0
+            </div>
+          </div>
+
+          <div class="cache-box" id="shared-memory-box">
+            <h4 class="text-sm font-bold text-green-800 uppercase mb-1">
+              스레드 블록 (공유 메모리)
+            </h4>
+            <p class="text-xs text-green-700 text-center mb-2">
+              16개의 스레드가 이 공간을 공유하며 병렬 계산
+            </p>
+            <span
+              id="cache-status"
+              class="font-bold text-lg bg-white px-3 py-1 rounded-full border border-green-200 text-green-800 shadow-sm"
+              >비어있음</span
+            >
+          </div>
+
+          <div
+            class="bg-green-50 p-4 rounded-xl border border-green-200 text-center"
+          >
+            <h4 class="text-sm font-bold text-green-800 uppercase">
+              공유 메모리 읽기 (SRAM)
+            </h4>
+            <p class="text-xs text-green-600 mb-2">
+              매우 빠름 (타일 내 16개 스레드 동시 접근)
+            </p>
+            <div
+              class="text-4xl font-black text-green-600 font-mono"
+              id="shared-reads"
+            >
+              0
+            </div>
+          </div>
+        </div>
+
+        <p
+          id="sim-status"
+          class="text-center mt-6 font-bold text-blue-600 h-6 text-lg"
+        >
+          버튼을 눌러 시뮬레이션을 시작하세요.
+        </p>
+      </section>
+
+      <!-- Explanation Section -->
+      <section class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div
+          class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4"
+        >
+          <h3
+            class="text-xl font-bold text-gray-800 border-b pb-2 flex items-center gap-2"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="text-blue-500"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <rect x="7" y="7" width="3" height="3" />
+              <rect x="14" y="7" width="3" height="3" />
+              <rect x="7" y="14" width="3" height="3" />
+              <rect x="14" y="14" width="3" height="3" />
+            </svg>
+            원리 설명: 타일(Tile)과 스레드 블록
+          </h3>
+          <p class="text-gray-700 leading-relaxed">
+            GPU는 수많은 코어를 가지고 있습니다. 효율적인 분업을 위해 전체
+            행렬을 <strong>작은 타일(이 예제에서는 4x4)</strong> 단위로
+            쪼갭니다.
+          </p>
+          <ul class="list-disc pl-5 text-gray-700 space-y-2">
+            <li>
+              <strong>2x2 타일 배치:</strong> 8x8 행렬을 계산하기 위해 총 4개의
+              타일 구역이 만들어집니다. (시각화의 굵은 선 참조)
+            </li>
+            <li>
+              <strong>스레드 블록 (Thread Block):</strong> 각 결과 타일은 GPU
+              내부의 '스레드 블록'이라는 작업 반장에 할당됩니다. 즉, 4개의 블록
+              프로세서가 각자의 타일을 책임집니다.
+            </li>
+            <li>
+              <strong>병렬 처리 (Parallelism):</strong> 블록 안에는 타일
+              크기(16칸)만큼의 일꾼(스레드)이 있습니다. 이들은 느린 VRAM에서
+              16개의 데이터를 <strong>한 번에</strong> 공유 메모리로 가져온 뒤,
+              공유 메모리 안에서 16칸의 계산을
+              <strong>동시에</strong> 수행합니다.
+            </li>
+          </ul>
+        </div>
+
+        <div
+          class="bg-slate-800 text-white p-6 rounded-2xl shadow-sm space-y-4"
+        >
+          <h3
+            class="text-xl font-bold border-b border-slate-600 pb-2 flex items-center gap-2"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="text-green-400"
+            >
+              <path d="M2 20h.01" />
+              <path d="M7 20v-4" />
+              <path d="M12 20v-8" />
+              <path d="M17 20V8" />
+              <path d="M22 4v16" />
+            </svg>
+            RTX 4060 성능 계산 (메모리 트래픽 극복)
+          </h3>
+          <p class="text-slate-300 text-sm">
+            크기가 N=4096인 행렬 A와 B를 곱할 때 (4096 × 4096):
+          </p>
+
+          <div
+            class="bg-slate-900 p-3 rounded-lg border border-slate-700 text-sm"
+          >
+            <div class="text-red-400 font-bold mb-1">[일반 방식]</div>
+            메모리 읽기: 칸마다 전체 행/열을 매번 VRAM에서 읽어 약
+            <span class="text-white font-mono text-lg">1,374억</span> 회 발생.
+            VRAM 대역폭 병목으로 GPU 연산기가 대기(Stall) 상태에 빠집니다.
+          </div>
+
+          <div
+            class="bg-slate-900 p-3 rounded-lg border border-slate-700 text-sm mt-2"
+          >
+            <div class="text-green-400 font-bold mb-1">
+              [32x32 타일링 적용 시]
+            </div>
+            메모리 읽기: 각 스레드 블록(1024개 스레드)이 32x32 타일을 공유
+            메모리에 올려놓고 재사용하므로, VRAM 접근 횟수가
+            <strong>1/32인 약 42억 회로 급감</strong>합니다. 공유 메모리 덕분에
+            GPU의 15 TFLOPS 연산력을 100% 가동할 수 있습니다.
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const SIZE = 8;
+      const TILE_SIZE = 4;
+      let globalReads = 0;
+      let sharedReads = 0;
+      let isRunning = false;
+      let abortController = new AbortController();
+
+      function initGrids() {
+        ["matrix-a", "matrix-b", "matrix-c"].forEach((id) => {
+          const container = document.getElementById(id);
+          container.innerHTML = "";
+          for (let r = 0; r < SIZE; r++) {
+            for (let c = 0; c < SIZE; c++) {
+              const cell = document.createElement("div");
+              cell.className = "cell";
+
+              // 2x2 타일 구분을 위한 굵은 경계선 추가
+              if (c === TILE_SIZE - 1) cell.classList.add("tile-border-right");
+              if (r === TILE_SIZE - 1) cell.classList.add("tile-border-bottom");
+
+              cell.id = `${id}-cell-${r * SIZE + c}`;
+              container.appendChild(cell);
+            }
+          }
+        });
+        updateCounters();
+        hideAllOutlines();
+      }
+
+      function updateCounters() {
+        document.getElementById("global-reads").innerText = globalReads;
+        document.getElementById("shared-reads").innerText = sharedReads;
+      }
+
+      function setStatus(text, isError = false) {
+        const el = document.getElementById("sim-status");
+        el.innerText = text;
+        el.className = `text-center mt-6 font-bold h-6 text-lg ${isError ? "text-red-600" : "text-blue-600"}`;
+      }
+
+      const sleep = (ms, signal) =>
+        new Promise((resolve, reject) => {
+          const timeout = setTimeout(resolve, ms);
+          if (signal)
+            signal.addEventListener("abort", () => {
+              clearTimeout(timeout);
+              reject(new Error("Aborted"));
+            });
+        });
+
+      function getIndex(row, col) {
+        return row * SIZE + col;
+      }
+
+      function resetSimulation() {
+        if (isRunning) abortController.abort();
+        isRunning = false;
+        abortController = new AbortController();
+        globalReads = 0;
+        sharedReads = 0;
+        initGrids();
+        document
+          .getElementById("shared-memory-box")
+          .classList.remove("cache-active");
+        document.getElementById("cache-status").innerText = "비어있음";
+        setStatus("시뮬레이션 초기화됨. 버튼을 눌러 시작하세요.");
+      }
+
+      async function highlightCell(
+        matrixId,
+        row,
+        col,
+        type,
+        duration = 100,
+        signal,
+      ) {
+        const cell = document.getElementById(
+          `${matrixId}-cell-${getIndex(row, col)}`,
+        );
+        if (!cell) return;
+        cell.classList.add(type);
+        if (duration > 0) {
+          await sleep(duration, signal);
+          cell.classList.remove(type);
+        }
+      }
+
+      // 타일 아웃라인 표시 함수
+      function showOutline(matrixId, row, col) {
+        const outline = document.getElementById(
+          `outline-${matrixId.split("-")[1]}`,
+        );
+        const container = document.getElementById(matrixId);
+        const cell = document.getElementById(`${matrixId}-cell-0`); // 크기 기준
+
+        // 간격 2px 감안한 계산 (Tailwind gap-2px = 2px)
+        const cellOuterSize = 28 + 2;
+        const tileWidth = cellOuterSize * TILE_SIZE;
+        const top = row * cellOuterSize + 4; // padding 4px 감안
+        const left = col * cellOuterSize + 4;
+
+        outline.style.width = `${tileWidth - 2}px`;
+        outline.style.height = `${tileWidth - 2}px`;
+        outline.style.top = `${top}px`;
+        outline.style.left = `${left}px`;
+        outline.style.display = "block";
+      }
+
+      function hideAllOutlines() {
+        document.getElementById("outline-a").style.display = "none";
+        document.getElementById("outline-b").style.display = "none";
+        document.getElementById("outline-c").style.display = "none";
+      }
+
+      // 일반 방식 (한 칸씩 순차 처리)
+      async function runNaive() {
+        resetSimulation();
+        isRunning = true;
+        setStatus(
+          "진행중: 일반 방식 (스레드 병렬성 없이 1칸씩 VRAM에서 전체 행/열 읽기)",
+        );
+        const signal = abortController.signal;
+
+        try {
+          for (let r = 0; r < SIZE; r++) {
+            for (let c = 0; c < SIZE; c++) {
+              const cCell = document.getElementById(
+                `matrix-c-cell-${getIndex(r, c)}`,
+              );
+              cCell.classList.add("computing");
+
+              for (let k = 0; k < SIZE; k++) {
+                highlightCell("matrix-a", r, k, "global-read", 50, signal);
+                highlightCell("matrix-b", k, c, "global-read", 50, signal);
+                globalReads += 2;
+                updateCounters();
+                await sleep(30, signal);
+              }
+              cCell.classList.remove("computing");
+              cCell.classList.add("done");
+            }
+          }
+          setStatus(
+            "완료: 심각한 병목 발생! 엄청난 양의 VRAM 접근이 필요합니다.",
+          );
+        } catch (e) {
+          if (e.message !== "Aborted") console.error(e);
+        } finally {
+          isRunning = false;
+        }
+      }
+
+      // 타일링 방식 (블록 단위 병렬 처리 시각화)
+      async function runTiled() {
+        resetSimulation();
+        isRunning = true;
+        const signal = abortController.signal;
+        const cacheBox = document.getElementById("shared-memory-box");
+        const cacheStatus = document.getElementById("cache-status");
+
+        try {
+          // 4개의 스레드 블록(결과 타일) 단위로 시뮬레이션
+          for (let tr = 0; tr < SIZE; tr += TILE_SIZE) {
+            for (let tc = 0; tc < SIZE; tc += TILE_SIZE) {
+              setStatus(
+                `진행중: 스레드 블록이 C행렬의 [${tr / 4 + 1}, ${tc / 4 + 1}] 타일을 담당하여 계산 시작`,
+              );
+              showOutline("matrix-c", tr, tc);
+
+              // 해당 C 타일을 계산하기 위해 A와 B의 타일 쌍들을 순회
+              for (let tk = 0; tk < SIZE; tk += TILE_SIZE) {
+                showOutline("matrix-a", tr, tk);
+                showOutline("matrix-b", tk, tc);
+
+                setStatus(
+                  `1단계: 16개의 스레드가 VRAM에서 타일 데이터(A, B)를 병렬로 읽어 공유 메모리에 저장`,
+                );
+                cacheBox.classList.add("cache-active");
+                cacheStatus.innerText = "타일 로딩 중...";
+                cacheStatus.className =
+                  "font-bold text-lg bg-white px-3 py-1 rounded-full border border-green-200 text-red-600 shadow-sm animate-pulse";
+
+                // 1. VRAM -> Shared Memory 로딩 (16칸 전체 동시 로딩 시각화)
+                let loadPromises = [];
+                for (let i = 0; i < TILE_SIZE; i++) {
+                  for (let j = 0; j < TILE_SIZE; j++) {
+                    loadPromises.push(
+                      highlightCell(
+                        "matrix-a",
+                        tr + i,
+                        tk + j,
+                        "global-read",
+                        400,
+                        signal,
+                      ),
+                    );
+                    loadPromises.push(
+                      highlightCell(
+                        "matrix-b",
+                        tk + i,
+                        tc + j,
+                        "global-read",
+                        400,
+                        signal,
+                      ),
+                    );
+                    globalReads += 2;
+                  }
+                }
+                updateCounters();
+                await Promise.all(loadPromises); // 병렬 로딩 대기
+
+                setStatus(
+                  `2단계: 스레드 블록 내부의 16개 스레드가 공유 메모리 안에서 동시(병렬) 연산!`,
+                );
+                cacheStatus.innerText = "16개 스레드 동시 연산 중";
+                cacheStatus.className =
+                  "font-bold text-lg bg-white px-3 py-1 rounded-full border border-green-200 text-green-600 shadow-sm";
+
+                // 2. Shared Memory를 활용한 병렬 계산 (C타일 16칸 전체 동시 연산 시각화)
+                // 타일 내에서 k 루프 (0~3)
+                for (let k = 0; k < TILE_SIZE; k++) {
+                  let computePromises = [];
+
+                  // 16개 스레드가 동시에 C 타일의 각자의 칸을 계산
+                  for (let i = 0; i < TILE_SIZE; i++) {
+                    for (let j = 0; j < TILE_SIZE; j++) {
+                      const cCell = document.getElementById(
+                        `matrix-c-cell-${getIndex(tr + i, tc + j)}`,
+                      );
+                      cCell.classList.add("computing");
+
+                      // 각 스레드가 공유 메모리에서 데이터를 읽는 연출
+                      computePromises.push(
+                        highlightCell(
+                          "matrix-a",
+                          tr + i,
+                          tk + k,
+                          "shared-read",
+                          100,
+                          signal,
+                        ),
+                      );
+                      computePromises.push(
+                        highlightCell(
+                          "matrix-b",
+                          tk + k,
+                          tc + j,
+                          "shared-read",
+                          100,
+                          signal,
+                        ),
+                      );
+                      sharedReads += 2;
+                    }
+                  }
+                  updateCounters();
+                  await Promise.all(computePromises);
+
+                  // 계산 효과 초기화
+                  for (let i = 0; i < TILE_SIZE; i++) {
+                    for (let j = 0; j < TILE_SIZE; j++) {
+                      document
+                        .getElementById(
+                          `matrix-c-cell-${getIndex(tr + i, tc + j)}`,
+                        )
+                        .classList.remove("computing");
+                    }
+                  }
+                }
+              } // end of tk loop
+
+              // 해당 C 타일(16칸) 전체를 완료 상태로 변경
+              for (let i = 0; i < TILE_SIZE; i++) {
+                for (let j = 0; j < TILE_SIZE; j++) {
+                  document
+                    .getElementById(`matrix-c-cell-${getIndex(tr + i, tc + j)}`)
+                    .classList.add("done");
+                }
+              }
+              cacheBox.classList.remove("cache-active");
+              cacheStatus.innerText = "대기중";
+              cacheStatus.className =
+                "font-bold text-lg bg-white px-3 py-1 rounded-full border border-green-200 text-green-800 shadow-sm";
+              await sleep(200, signal);
+            }
+          }
+          hideAllOutlines();
+          cacheStatus.innerText = "모든 블록 처리 완료";
+          setStatus(
+            "완료: 타일 단위 병렬 처리로 글로벌 메모리(빨간색) 접근이 1/4로 줄었습니다!",
+          );
+        } catch (e) {
+          if (e.message !== "Aborted") console.error(e);
+        } finally {
+          isRunning = false;
+        }
+      }
+
+      // Initialize on load
+      window.onload = initGrids;
+    </script>
+  </body>
+</html>

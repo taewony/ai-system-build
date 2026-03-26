@@ -1,0 +1,34 @@
+book_title: AI Agent Programming
+status: drafting
+chapters:
+- id: ch_intro
+  title: Introduction to Local AI Agents
+  file_link: ./chapters/ch_intro.md
+- id: ch_ollama
+  title: '1. Ollama: Lightweight Local Serving'
+  file_link: ./chapters/ch_ollama.md
+- id: ch_nanovllm
+  title: '2. nano-vLLM: High-Performance GPU Inference'
+  file_link: ./chapters/ch_nanovllm.md
+- id: ch_openclaw
+  title: '3. OpenClaw: Mastering Tool Calling'
+  file_link: ./chapters/ch_openclaw.md
+- id: ch_hermes
+  title: '4. Hermes Agent: Autonomous ReAct Loops'
+  file_link: ./chapters/ch_hermes.md
+- id: ch_3c6724fe
+  title: '1. Ollama: Lightweight Local Serving'
+  file_link: ./chapters/ch_3c6724fe.md
+  status: draft
+- id: ch_d39017f9
+  title: '2. nano-vLLM: GPU Inference'
+  file_link: ./chapters/ch_d39017f9.md
+  status: draft
+- id: ch_cee8c451
+  title: '3. OpenClaw: Tool Calling'
+  file_link: ./chapters/ch_cee8c451.md
+  status: draft
+- id: ch_4a142234
+  title: '4. Hermes Agent: ReAct Loops'
+  file_link: ./chapters/ch_4a142234.md
+  status: draft

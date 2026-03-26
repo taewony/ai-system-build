@@ -1,0 +1,12 @@
+# workspace/knowledge_base.yaml
+- id: rule_vite_lit_setup
+  given: "사용자가 생성된 마크다운 플레이북을 웹 브라우저에서 볼 수 있도록 UI(웹 뷰어) 생성을 요청할 때"
+  when: "Vite와 Lit 환경이 아직 구축되지 않았을 때"
+  then: |
+    다음 순서대로 터미널 명령어와 파일 쓰기 작업을 자율적으로 실행하라:
+    1. 명령어 실행: `npm create vite@latest playbook-web -- --template lit`
+    2. 명령어 실행: `cd playbook-web && npm install js-yaml marked`
+    3. 파일 작성: `playbook-web/src/my-element.js` 파일에 Lit 컴포넌트 코드를 작성하여 덮어쓴다. 
+       (코드 내용: import { LitElement, html } from 'lit'; ... [기존 응답의 전체 코드 삽입])
+    4. 파일 작성: `playbook-web/index.html`의 태그를 `<playbook-app>`으로 수정한다.
+    5. 명령어 실행: `cd playbook-web && npm run dev`
